@@ -153,6 +153,7 @@
     "responsibleDept": "IT-отдел",
     "projectNumber": "PRJ-2025-015",
     "totalAmount": 2000000,
+    "currency": "RUB",
     "costCenters": [
       {"cc": "ЦЗ-301 (IT)", "amount": 1200000},
       {"cc": "ЦЗ-402 (Админ)", "amount": 800000}
@@ -193,6 +194,76 @@
     ],
     "relations": {
       "parent": "APP-1001",
+      "children": ["ATT-9001"]
+    }
+  },
+  {
+    "id": "ATT-9001",
+    "title": "Приложение к договору поставки IT-оборудования",
+    "type": "Attachment",
+    "status": "В работе",
+    "createdAt": "2025-09-15",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "budgetArticle": null,
+    "regNumber": "ATT-2025-003",
+    "author": "Петр Козлов",
+    "responsible": "Мария Сидорова",
+    "responsibleDept": "IT-отдел",
+    "content": "Дополнительные технические требования к серверному оборудованию: увеличение объема RAM до 64GB, установка SSD дисков NVMe.",
+    "relations": {
+      "parent": "CTR-5001",
+      "children": ["INV-3002"]
+    }
+  },
+  {
+    "id": "INV-3001",
+    "title": "Счёт на предоплату по договору поставки",
+    "type": "Invoice",
+    "status": "В работе",
+    "createdAt": "2025-09-18",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "regNumber": "INV-2025-012",
+    "author": "Анна Смирнова",
+    "responsible": "Петр Козлов",
+    "responsibleDept": "Бухгалтерия",
+    "invoiceKind": "prepay",
+    "sum": 600000,
+    "sumNoVAT": 500000,
+    "sumTotal": 600000,
+    "currency": "RUB",
+    "paymentDue": "10 рабочих дней",
+    "base": "CTR-5001",
+    "relations": {
+      "parent": "CTR-5001",
+      "children": []
+    }
+  },
+  {
+    "id": "INV-3002",
+    "title": "Счёт на доп. работы по приложению",
+    "type": "Invoice",
+    "status": "В работе",
+    "createdAt": "2025-09-20",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "regNumber": "INV-2025-013",
+    "author": "Петр Козлов",
+    "responsible": "Мария Сидорова",
+    "responsibleDept": "IT-отдел",
+    "invoiceKind": "transfer",
+    "sum": 150000,
+    "sumNoVAT": 125000,
+    "sumTotal": 150000,
+    "currency": "RUB",
+    "paymentDue": "5 рабочих дней",
+    "base": "ATT-9001",
+    "relations": {
+      "parent": "ATT-9001",
       "children": []
     }
   }

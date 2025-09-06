@@ -28,8 +28,9 @@ function renderList(filter="", status="") {
     (status === "" || d.status === status)
   ).forEach(d => {
     const li = document.createElement("li");
-    li.className = "px-3 py-2 rounded hover:bg-gray-100 cursor-pointer flex justify-between";
-    li.innerHTML = `<span>${d.title}</span>${getStatusBadge(d.status)}`;
+    li.className = "px-3 py-2 rounded hover:bg-gray-100 cursor-pointer flex justify-between items-center";
+    const typeBadge = `<span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 ml-2">${d.type}</span>`;
+    li.innerHTML = `<div class="flex items-center"><span>${d.title}</span>${typeBadge}</div>${getStatusBadge(d.status)}`;
     li.onclick = () => openCard(d.id);
     $list.appendChild(li);
   });
@@ -94,6 +95,10 @@ function openCard(id) {
   renderContractAmounts(doc);
   renderInheritedCostCenters(doc);
   renderContractTemplate(doc);
+  renderAttachmentExtras(doc);
+  renderAttachmentTemplate(doc);
+  renderInvoiceExtras(doc);
+  renderInvoiceValidation(doc);
 
   // обновляем футер печати
   const footerTitle = document.getElementById("print-doc-title");
@@ -101,7 +106,7 @@ function openCard(id) {
 }
 
 function field(label, value, badge=false, inherited=false, parent=null) {
-  const lock = inherited ? `<span class="ml-2 text-xs px-2 py-0.5 rounded bg-gray-100" title="Наследуется от: ${parent?.title || ''}">🔒</span>` : "";
+  const lock = inherited ? `<span class="ml-2 text-xs px-2 py-0.5 rounded bg-gray-100" title="Наследуется из ${parent?.title || ''} (${parent?.id || ''})">🔒</span>` : "";
   const val = badge ? getStatusBadge(value) : `<span class="${inherited ? 'text-gray-500' : 'font-medium'}">${value ?? "—"}</span>`;
   return `<div><div class="text-gray-500 text-xs">${label}${lock}</div><div>${val}</div></div>`;
 }
@@ -188,6 +193,12 @@ function renderCostCentersTable(doc) {
   const rows = Array.isArray(doc.costCenters) ? doc.costCenters : [];
   const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
+  const totalAmount = doc.totalAmount || 0;
+  const isValid = total === totalAmount;
+  const statusColor = isValid ? 'text-green-600' : 'text-red-600';
+  const statusIcon = isValid ? '✅' : '❌';
+  const statusText = isValid ? 'Суммы совпадают' : 'Суммы не совпадают';
+
   host.innerHTML = `
     <div class="mt-6">
       <div class="text-sm text-gray-500 mb-2">Кост-центр (табличный справочник)</div>
@@ -195,7 +206,7 @@ function renderCostCentersTable(doc) {
         <thead>
           <tr class="bg-gray-50">
             <th class="text-left p-2 border-b">Центр затрат</th>
-            <th class="text-right p-2 border-b">Сумма, ₽</th>
+            <th class="text-right p-2 border-b">Сумма, ${doc.currency || 'RUB'}</th>
           </tr>
         </thead>
         <tbody>
@@ -206,11 +217,18 @@ function renderCostCentersTable(doc) {
             </tr>
           `).join('')}
           <tr>
-            <td class="p-2 font-semibold text-right">Итого:</td>
-            <td class="p-2 font-semibold text-right">${fmt(total)}</td>
+            <td class="p-2 font-semibold text-right">Итого по кост-центрам:</td>
+            <td class="p-2 font-semibold text-right">${fmt(total)} ${doc.currency || 'RUB'}</td>
+          </tr>
+          <tr>
+            <td class="p-2 font-semibold text-right">Общая сумма заявки:</td>
+            <td class="p-2 font-semibold text-right">${fmt(totalAmount)} ${doc.currency || 'RUB'}</td>
           </tr>
         </tbody>
       </table>
+      <div class="mt-3 p-2 rounded ${isValid ? 'bg-green-50' : 'bg-red-50'}">
+        <span class="${statusColor} font-semibold">${statusIcon} ${statusText}</span>
+      </div>
     </div>
   `;
 }
@@ -560,6 +578,226 @@ function renderContractTemplate(doc) {
   box.classList.remove('hidden');
 }
 
+// Рендеринг дополнительных полей для Attachment
+function renderAttachmentExtras(doc) {
+  const wrap = document.getElementById('app-extra');
+  if (!wrap) return;
+  if (doc.type !== 'Attachment') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const resolved = { ...doc };
+  
+  // Наследуем поля от родителя Contract
+  if (parent) {
+    if (!resolved.organization) resolved.organization = parent.organization;
+    if (!resolved.counterparty) resolved.counterparty = parent.counterparty;
+    if (!resolved.budgetArticle) resolved.budgetArticle = parent.budgetArticle;
+  }
+
+  const block = `
+    <div class="grid grid-cols-2 gap-6 mt-6">
+      <div>
+        <div class="text-sm text-gray-500">Организация ${doc.organization ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.organization ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Контрагент ${doc.counterparty ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.counterparty ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Регистрационный номер</div>
+        <div class="font-medium">${doc.regNumber ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Автор / Дата создания</div>
+        <div class="font-medium">
+          ${doc.author ?? '—'}${doc.createdAt ? ' — ' + doc.createdAt : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Ответственный</div>
+        <div class="font-medium">${doc.responsible ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Подразделение ответственного</div>
+        <div class="font-medium">${doc.responsibleDept ?? '—'}</div>
+      </div>
+
+      <div class="col-span-2">
+        <div class="text-sm text-gray-500">Содержание</div>
+        <div class="font-medium">${doc.content ?? '—'}</div>
+      </div>
+    </div>
+  `;
+
+  wrap.insertAdjacentHTML('beforeend', block);
+  wrap.classList.remove('hidden');
+}
+
+// Рендеринг автошаблона для Attachment
+function renderAttachmentTemplate(doc) {
+  const box = document.getElementById('auto-template');
+  if (!box) return;
+  if (doc.type !== 'Attachment') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+
+  const template = `
+    <div class="mt-6 p-4 border rounded bg-gray-50">
+      <div class="font-semibold mb-2">Автосгенерированный шаблон приложения</div>
+      <div class="text-sm leading-relaxed">
+        <strong>Приложение к договору ${parent?.regNumber ?? '—'}</strong><br>
+        Рег. номер приложения: <b>${doc.regNumber ?? '—'}</b><br>
+        Автор: <b>${doc.author ?? '—'}</b><br>
+        Ответственный: <b>${doc.responsible ?? '—'}</b>, подразделение: <b>${doc.responsibleDept ?? '—'}</b><br>
+        <br>
+        <strong>Содержание:</strong><br>
+        ${doc.content ?? '—'}
+      </div>
+    </div>
+  `;
+
+  box.insertAdjacentHTML('beforeend', template);
+  box.classList.remove('hidden');
+}
+
+// Рендеринг дополнительных полей для Invoice
+function renderInvoiceExtras(doc) {
+  const wrap = document.getElementById('app-extra');
+  if (!wrap) return;
+  if (doc.type !== 'Invoice') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const resolved = { ...doc };
+  
+  // Наследуем поля от родителя
+  if (parent) {
+    if (!resolved.organization) resolved.organization = parent.organization;
+    if (!resolved.counterparty) resolved.counterparty = parent.counterparty;
+  }
+
+  const block = `
+    <div class="grid grid-cols-2 gap-6 mt-6">
+      <div>
+        <div class="text-sm text-gray-500">Организация ${doc.organization ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.organization ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Контрагент ${doc.counterparty ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.counterparty ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Регистрационный номер</div>
+        <div class="font-medium">${doc.regNumber ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Тип счёта</div>
+        <div class="font-medium">${doc.invoiceKind ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Сумма без НДС</div>
+        <div class="font-medium">${fmt(doc.sumNoVAT || 0)} ${doc.currency || 'RUB'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Сумма с НДС</div>
+        <div class="font-medium">${fmt(doc.sumTotal || 0)} ${doc.currency || 'RUB'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Срок оплаты</div>
+        <div class="font-medium">${doc.paymentDue ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Основание</div>
+        <div class="font-medium">${doc.base ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Автор / Дата создания</div>
+        <div class="font-medium">
+          ${doc.author ?? '—'}${doc.createdAt ? ' — ' + doc.createdAt : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Ответственный</div>
+        <div class="font-medium">${doc.responsible ?? '—'}</div>
+      </div>
+    </div>
+  `;
+
+  wrap.insertAdjacentHTML('beforeend', block);
+  wrap.classList.remove('hidden');
+}
+
+// Рендеринг проверки суммы для Invoice
+function renderInvoiceValidation(doc) {
+  const box = document.getElementById('auto-template');
+  if (!box) return;
+  if (doc.type !== 'Invoice') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  if (!parent) return;
+
+  let isValid = true;
+  let validationText = '';
+  let statusColor = 'text-green-600';
+  let statusIcon = '✅';
+
+  if (parent.type === 'Contract') {
+    const invoiceSum = doc.sumTotal || 0;
+    const parentAmounts = parent.amounts || {};
+    
+    if (doc.invoiceKind === 'prepay') {
+      const prepayLimit = parentAmounts.prepay || 0;
+      isValid = invoiceSum <= prepayLimit;
+      validationText = `Предоплата: ${fmt(invoiceSum)} ≤ ${fmt(prepayLimit)}`;
+    } else if (doc.invoiceKind === 'postpay') {
+      const postpayLimit = parentAmounts.postpay || 0;
+      isValid = invoiceSum <= postpayLimit;
+      validationText = `Постоплата: ${fmt(invoiceSum)} ≤ ${fmt(postpayLimit)}`;
+    } else if (doc.invoiceKind === 'transfer') {
+      isValid = true;
+      validationText = 'Трансфер: проверка не требуется';
+    }
+  }
+
+  if (!isValid) {
+    statusColor = 'text-red-600';
+    statusIcon = '❌';
+  }
+
+  const template = `
+    <div class="mt-6 p-4 border rounded bg-gray-50">
+      <div class="font-semibold mb-2">Проверка суммы счёта</div>
+      <div class="text-sm leading-relaxed">
+        <div class="mb-3 p-2 rounded ${isValid ? 'bg-green-50' : 'bg-red-50'}">
+          <span class="${statusColor} font-semibold">${statusIcon} ${validationText}</span>
+        </div>
+        
+        <div class="mb-2">
+          <strong>Детали счёта:</strong><br>
+          Сумма без НДС: <b>${fmt(doc.sumNoVAT || 0)} ${doc.currency || 'RUB'}</b><br>
+          Сумма с НДС: <b>${fmt(doc.sumTotal || 0)} ${doc.currency || 'RUB'}</b><br>
+          Срок оплаты: <b>${doc.paymentDue ?? '—'}</b>
+        </div>
+      </div>
+    </div>
+  `;
+
+  box.insertAdjacentHTML('beforeend', template);
+  box.classList.remove('hidden');
+}
+
 // фильтры
 if ($search) $search.addEventListener("input", () => renderList($search.value, $statusFilter?.value || ""));
 if ($statusFilter) $statusFilter.addEventListener("change", () => renderList($search?.value || "", $statusFilter.value));
@@ -656,6 +894,18 @@ const TOUR_STEPS = [
     text: 'Договор: наследует поля от заявки, проверяет сумму (✅ 2,000,000 ≥ 2,000,000).',
     target: () => document.getElementById('doc-list'),
     onNext: () => openCard('CTR-5001')
+  },
+  {
+    id: 'attachment',
+    text: 'Приложение к договору: наследует организацию и контрагента, показывает содержание.',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('ATT-9001')
+  },
+  {
+    id: 'invoice',
+    text: 'Счёт на предоплату: проверяет сумму (✅ 600,000 ≤ 600,000 предоплаты).',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('INV-3001')
   },
   {
     id: 'independent',
