@@ -2,12 +2,23 @@ let DOCS = [];
 
 const INHERITED = ["author","counterparty","projectNumber"];
 
-const $list = document.getElementById("doc-list");
-const $main = document.querySelector("main");
-const $search = document.getElementById("search");
-const $statusFilter = document.getElementById("status-filter");
+let $list, $main, $search, $statusFilter;
 
-const byId = Object.fromEntries(DOCS.map(d => [d.id, d]));
+// Инициализация DOM элементов
+function initDOMElements() {
+  $list = document.getElementById("doc-list");
+  $main = document.querySelector("main");
+  $search = document.getElementById("search");
+  $statusFilter = document.getElementById("status-filter");
+  
+  if (!$list || !$main) {
+    console.error('Критические DOM элементы не найдены!');
+    return false;
+  }
+  return true;
+}
+
+let byId = {};
 
 function getStatusBadge(status) {
   let classes = "px-2 py-0.5 rounded-full text-xs ";
@@ -22,6 +33,10 @@ function getStatusBadge(status) {
 }
 
 function renderList(filter="", status="") {
+  if (!$list) {
+    console.error('$list не инициализирован');
+    return;
+  }
   $list.innerHTML = "";
   DOCS.filter(d =>
     d.title.toLowerCase().includes(filter.toLowerCase()) &&
@@ -37,24 +52,67 @@ function renderList(filter="", status="") {
 }
 
 function withInheritance(doc) {
-  const parentId = doc.parentId || doc.relations?.parent;
+  if (!doc) return { doc: null, parent: null, resolved: {} }; // защита на всякий случай
+
+  // если у документа нет родителя — возвращаем его как есть
+  const parentId = doc.relations?.parent || doc.parentId;
   if (!parentId) return { doc, parent: null, resolved: { ...doc } };
-  const parent = byId[parentId];
+
+  // ищем родительский документ
+  const parent = byId[parentId] || DOCS.find(d => d.id === parentId);
+  if (!parent) return { doc, parent: null, resolved: { ...doc } }; // если родитель не найден — просто возвращаем исходный документ
+
+  // создаём копию документа
   const resolved = { ...doc };
-  INHERITED.forEach(k => { if (resolved[k] == null && parent) resolved[k] = parent[k]; });
+
+  // копируем поля из родителя, если они отсутствуют у текущего документа
+  const inheritFields = [
+    'organization',
+    'counterparty',
+    'budgetArticle',
+    'costCenters',
+    'cashFlowArticle',
+    'paymentType',
+    'author',
+    'projectNumber'
+  ];
+
+  for (const field of inheritFields) {
+    if (resolved[field] == null && parent[field] != null) {
+      resolved[field] = parent[field];
+    }
+  }
+
   return { doc, parent, resolved };
 }
 
 function openCard(id) {
-  const { doc, parent, resolved } = withInheritance(byId[id]);
+  if (!$main) {
+    console.error('$main не инициализирован');
+    return;
+  }
+  const doc = byId[id];
+  if (!doc) {
+    console.error('Документ не найден:', id);
+    return;
+  }
+  
+  try {
+    // страховка от undefined
+    normalizeRelations(doc);
+    const result = withInheritance(doc);
+    const { doc: normalizedDoc, parent, resolved } = result || { doc, parent: null, resolved: { ...doc } };
 
   // Скрываем сообщение "Выберите документ"
   const welcomeDiv = $main.querySelector('div:first-child');
   if (welcomeDiv) welcomeDiv.style.display = 'none';
 
-  const childrenIds = doc.children || doc.relations?.children || [];
+  const childrenIds = normalizedDoc.children || normalizedDoc.relations?.children || [];
   const childrenHtml = childrenIds
-    .map(cid => byId[cid] ? `<a href="#" data-child="${cid}" class="underline hover:no-underline">${byId[cid].title}</a>` : '')
+    .map(cid => {
+      const childDoc = byId[cid];
+      return childDoc ? `<a href="#" data-child="${cid}" class="underline hover:no-underline">${childDoc.title}</a>` : '';
+    })
     .filter(Boolean).join(", ") || "—";
 
   $main.innerHTML = `
@@ -65,9 +123,9 @@ function openCard(id) {
         ${field("Статус", resolved.status, true)}
         ${field("Версия", resolved.version)}
         ${field("Дата создания", resolved.date || resolved.createdAt)}
-        ${field("Автор", resolved.author, false, doc.author==null, parent)}
-        ${field("Контрагент", resolved.counterparty, false, doc.counterparty==null, parent)}
-        ${field("Номер проекта", resolved.projectNumber, false, doc.projectNumber==null, parent)}
+        ${field("Автор", resolved.author, false, normalizedDoc.author==null, parent)}
+        ${field("Контрагент", resolved.counterparty, false, normalizedDoc.counterparty==null, parent)}
+        ${field("Номер проекта", resolved.projectNumber, false, normalizedDoc.projectNumber==null, parent)}
       </div>
       <div class="mt-6">
         <h3 class="font-semibold mb-2">Связи</h3>
@@ -86,30 +144,41 @@ function openCard(id) {
   });
 
   // Рендеринг дополнительных полей для новых типов документов
-  renderApplicationExtras(doc);
-  renderCostCentersTable(doc);
-  renderApplicationTemplate(doc);
-  renderAgreementExtras(doc);
-  renderAgreementTemplates(doc);
-  renderContractExtras(doc);
-  renderContractAmounts(doc);
-  renderInheritedCostCenters(doc);
-  renderContractTemplate(doc);
-  renderAttachmentExtras(doc);
-  renderAttachmentTemplate(doc);
-  renderInvoiceExtras(doc);
-  renderInvoiceValidation(doc);
-  renderClosingExtras(doc);
-  renderClosingValidation(doc);
-  renderClosingTemplate(doc);
+  renderApplicationExtras(normalizedDoc);
+  renderCostCentersTable(normalizedDoc);
+  renderApplicationTemplate(normalizedDoc);
+  renderAgreementExtras(normalizedDoc);
+  renderAgreementTemplates(normalizedDoc);
+  renderContractExtras(normalizedDoc);
+  renderContractAmounts(normalizedDoc);
+  renderInheritedCostCenters(normalizedDoc);
+  renderContractTemplate(normalizedDoc);
+  renderAttachmentExtras(normalizedDoc);
+  renderAttachmentTemplate(normalizedDoc);
+  renderInvoiceExtras(normalizedDoc);
+  renderInvoiceValidation(normalizedDoc);
+  renderClosingExtras(normalizedDoc);
+  renderClosingValidation(normalizedDoc);
+  renderClosingTemplate(normalizedDoc);
 
   // Построение диаграмм
   buildHierarchyMermaid(DOCS);
-  buildInheritanceMermaid(doc, parent);
+  buildInheritanceMermaid(normalizedDoc, parent);
 
   // обновляем футер печати
   const footerTitle = document.getElementById("print-doc-title");
   if (footerTitle) footerTitle.textContent = resolved.title || "Без названия";
+  
+  } catch (error) {
+    console.error('Ошибка при открытии карточки:', error);
+    $main.innerHTML = `
+      <div class="p-6 w-full text-left">
+        <h2 class="text-xl font-bold mb-4 text-red-600">Ошибка загрузки документа</h2>
+        <p class="text-gray-600">Не удалось загрузить документ: ${id}</p>
+        <p class="text-sm text-gray-500 mt-2">Ошибка: ${error.message}</p>
+      </div>
+    `;
+  }
 }
 
 function field(label, value, badge=false, inherited=false, parent=null) {
@@ -253,7 +322,7 @@ function renderApplicationTemplate(doc) {
 
   box.classList.remove('hidden');
   const rows = (doc.costCenters || [])
-    .map(r => `— ${r.cc}: ${fmt(r.amount || 0)} ₽`).join('<br>');
+    .map(r => `— ${r.cc}: ${fmt(r.amount || 0)} ${doc.currency || 'RUB'}`).join('<br>');
 
   const total = (doc.costCenters || [])
     .reduce((s, r) => s + (Number(r.amount) || 0), 0);
@@ -273,7 +342,7 @@ function renderApplicationTemplate(doc) {
         <br>
         Распределение по кост-центрам:<br>
         ${rows || '—'}<br>
-        <b>Итого: ${fmt(total)} ₽</b>
+        <b>Итого: ${fmt(total)} ${doc.currency || 'RUB'}</b>
       </div>
     </div>
   `;
@@ -377,7 +446,7 @@ function renderContractExtras(doc) {
   if (!wrap) return;
   if (doc.type !== 'Contract') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
   const resolved = { ...doc };
   
   // Наследуем поля от родителя Application
@@ -401,7 +470,7 @@ function renderContractExtras(doc) {
 
       <div>
         <div class="text-sm text-gray-500">Статус контрагента</div>
-        <div class="font-medium">${doc.counterpartyResidency ?? '—'}</div>
+        <div class="font-medium">${doc.counterpartyStatus ?? '—'}</div>
       </div>
       <div>
         <div class="text-sm text-gray-500">ДДС статья</div>
@@ -419,11 +488,11 @@ function renderContractExtras(doc) {
 
       <div>
         <div class="text-sm text-gray-500">Кто подписывает первым</div>
-        <div class="font-medium">${doc.signsFirst ?? '—'}</div>
+        <div class="font-medium">${doc.firstSigner ?? '—'}</div>
       </div>
       <div>
         <div class="text-sm text-gray-500">Дата подписания</div>
-        <div class="font-medium">${doc.signedAt || (doc.status === 'Подписан' ? new Date().toLocaleDateString('ru-RU') : '—')}</div>
+        <div class="font-medium">${doc.signingDate || (doc.status === 'Подписан' ? new Date().toLocaleDateString('ru-RU') : '—')}</div>
       </div>
 
       <div class="col-span-2">
@@ -458,7 +527,6 @@ function renderContractAmounts(doc) {
   if (doc.type !== 'Contract') return;
 
   host.classList.remove('hidden');
-  const amounts = doc.amounts || {};
   const paymentType = doc.paymentType || 'prepay';
   
   let amountsHtml = '';
@@ -468,11 +536,11 @@ function renderContractAmounts(doc) {
       <div class="grid grid-cols-2 gap-4">
         <div>
           <div class="text-sm text-gray-500">Предоплата</div>
-          <div class="font-medium text-lg">${fmt(amounts.prepay || 0)} ₽</div>
+          <div class="font-medium text-lg">${fmt(doc.prepay?.amountTotal || 0)} ${doc.prepay?.currency || 'RUB'}</div>
         </div>
         <div>
           <div class="text-sm text-gray-500">Постоплата</div>
-          <div class="font-medium text-lg">${fmt(amounts.postpay || 0)} ₽</div>
+          <div class="font-medium text-lg">${fmt(doc.postpay?.amountTotal || 0)} ${doc.postpay?.currency || 'RUB'}</div>
         </div>
       </div>
     `;
@@ -480,19 +548,19 @@ function renderContractAmounts(doc) {
     amountsHtml = `
       <div>
         <div class="text-sm text-gray-500">Предоплата</div>
-        <div class="font-medium text-lg">${fmt(amounts.prepay || 0)} ₽</div>
+        <div class="font-medium text-lg">${fmt(doc.prepay?.amountTotal || 0)} ${doc.prepay?.currency || 'RUB'}</div>
       </div>
     `;
   } else if (paymentType === 'postpay') {
     amountsHtml = `
       <div>
         <div class="text-sm text-gray-500">Постоплата</div>
-        <div class="font-medium text-lg">${fmt(amounts.postpay || 0)} ₽</div>
+        <div class="font-medium text-lg">${fmt(doc.postpay?.amountTotal || 0)} ${doc.postpay?.currency || 'RUB'}</div>
       </div>
     `;
   }
 
-  const total = (amounts.prepay || 0) + (amounts.postpay || 0);
+  const total = (doc.prepay?.amountTotal || 0) + (doc.postpay?.amountTotal || 0);
 
   host.innerHTML = `
     <div class="mt-6">
@@ -500,7 +568,7 @@ function renderContractAmounts(doc) {
       ${amountsHtml}
       <div class="mt-4 p-3 bg-gray-50 rounded">
         <div class="text-sm text-gray-500">Итого по договору</div>
-        <div class="font-bold text-xl">${fmt(total)} ₽</div>
+        <div class="font-bold text-xl">${fmt(total)} ${doc.prepay?.currency || doc.postpay?.currency || 'RUB'}</div>
       </div>
     </div>
   `;
@@ -512,10 +580,10 @@ function renderInheritedCostCenters(doc) {
   if (!box) return;
   if (doc.type !== 'Contract') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
   if (!parent) return;
 
-  const contractTotal = (doc.amounts?.prepay || 0) + (doc.amounts?.postpay || 0);
+  const contractTotal = (doc.prepay?.amountTotal || 0) + (doc.postpay?.amountTotal || 0);
   const parentTotal = parent.totalAmount || 0;
   const isValid = contractTotal >= parentTotal;
   
@@ -524,7 +592,7 @@ function renderInheritedCostCenters(doc) {
   const statusText = isValid ? 'Сумма договора соответствует заявке' : 'Сумма договора меньше суммы заявки';
 
   const costCentersHtml = (doc.costCenters || [])
-    .map(r => `— ${r.cc}: ${fmt(r.amount || 0)} ₽`).join('<br>');
+    .map(r => `— ${r.cc}: ${fmt(r.amount || 0)} ${doc.prepay?.currency || doc.postpay?.currency || 'RUB'}`).join('<br>');
 
   const template = `
     <div class="mt-6 p-4 border rounded bg-gray-50">
@@ -532,7 +600,7 @@ function renderInheritedCostCenters(doc) {
       <div class="text-sm leading-relaxed">
         <div class="mb-3 p-2 rounded ${isValid ? 'bg-green-50' : 'bg-red-50'}">
           <span class="${statusColor} font-semibold">${statusIcon} ${statusText}</span><br>
-          <small>Договор: ${fmt(contractTotal)} ₽ | Заявка: ${fmt(parentTotal)} ₽</small>
+          <small>Договор: ${fmt(contractTotal)} ${doc.prepay?.currency || doc.postpay?.currency || 'RUB'} | Заявка: ${fmt(parentTotal)} ${parent.currency || 'RUB'}</small>
         </div>
         
         <div class="mb-2">
@@ -553,7 +621,7 @@ function renderContractTemplate(doc) {
   if (!box) return;
   if (doc.type !== 'Contract') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
   const amounts = doc.amounts || {};
   const total = (amounts.prepay || 0) + (amounts.postpay || 0);
   
@@ -583,10 +651,10 @@ function renderContractTemplate(doc) {
         Срок оплаты: <b>${doc.paymentTerm ?? '—'}</b><br>
         <br>
         <strong>Подписание:</strong><br>
-        Кто подписывает первым: <b>${doc.signsFirst ?? '—'}</b><br>
-        Дата подписания: <b>${doc.signedAt || (doc.status === 'Подписан' ? new Date().toLocaleDateString('ru-RU') : '—')}</b><br>
+        Кто подписывает первым: <b>${doc.firstSigner ?? '—'}</b><br>
+        Дата подписания: <b>${doc.signingDate || (doc.status === 'Подписан' ? new Date().toLocaleDateString('ru-RU') : '—')}</b><br>
         <br>
-        <strong>Итого по договору: ${fmt(total)} ₽</strong>
+        <strong>Итого по договору: ${fmt(total)} ${doc.prepay?.currency || doc.postpay?.currency || 'RUB'}</strong>
       </div>
     </div>
   `;
@@ -601,7 +669,7 @@ function renderAttachmentExtras(doc) {
   if (!wrap) return;
   if (doc.type !== 'Attachment') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
   const resolved = { ...doc };
   
   // Наследуем поля от родителя Contract
@@ -648,6 +716,11 @@ function renderAttachmentExtras(doc) {
         <div class="text-sm text-gray-500">Содержание</div>
         <div class="font-medium">${doc.content ?? '—'}</div>
       </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Сумма</div>
+        <div class="font-medium">${doc.amount?.amountTotal ? fmt(doc.amount.amountTotal) + ' ' + (doc.amount.currency || 'RUB') : '—'}</div>
+      </div>
     </div>
   `;
 
@@ -677,7 +750,7 @@ function renderAttachmentTemplate(doc) {
   if (!box) return;
   if (doc.type !== 'Attachment') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
 
   const template = `
     <div class="mt-6 p-4 border rounded bg-gray-50">
@@ -704,7 +777,7 @@ function renderInvoiceExtras(doc) {
   if (!wrap) return;
   if (doc.type !== 'Invoice') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
   const resolved = { ...doc };
   
   // Наследуем поля от родителя
@@ -778,7 +851,7 @@ function renderInvoiceValidation(doc) {
   if (!box) return;
   if (doc.type !== 'Invoice') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
   if (!parent) return;
 
   let isValid = true;
@@ -787,9 +860,10 @@ function renderInvoiceValidation(doc) {
   let statusIcon = '✅';
 
   if (parent.type === 'Contract') {
-    const invoiceSum = doc.sumTotal || 0;
-    const parentAmounts = parent.amounts || {};
-    const totalContractSum = (parentAmounts.prepay || 0) + (parentAmounts.postpay || 0);
+    const invoiceSum = doc.amount?.amountTotal || 0;
+  const prepayAmount = parent.prepay?.amountTotal || 0;
+  const postpayAmount = parent.postpay?.amountTotal || 0;
+  const totalContractSum = prepayAmount + postpayAmount;
     
     // Проверка на спорный случай
     if (parent.paymentType === 'partial' && invoiceSum === totalContractSum) {
@@ -799,15 +873,15 @@ function renderInvoiceValidation(doc) {
       validationText = 'Спорный случай: счёт на 100% при частичной оплате';
     } else {
       // Обычные проверки
-      if (doc.invoiceKind === 'prepay') {
-        const prepayLimit = parentAmounts.prepay || 0;
+      if (doc.paymentType === 'prepay') {
+        const prepayLimit = prepayAmount;
         isValid = invoiceSum <= prepayLimit;
         validationText = `Предоплата: ${fmt(invoiceSum)} ≤ ${fmt(prepayLimit)}`;
-      } else if (doc.invoiceKind === 'postpay') {
-        const postpayLimit = parentAmounts.postpay || 0;
+      } else if (doc.paymentType === 'postpay') {
+        const postpayLimit = postpayAmount;
         isValid = invoiceSum <= postpayLimit;
         validationText = `Постоплата: ${fmt(invoiceSum)} ≤ ${fmt(postpayLimit)}`;
-      } else if (doc.invoiceKind === 'transfer') {
+      } else if (doc.paymentType === 'transfer') {
         isValid = true;
         validationText = 'Трансфер: проверка не требуется';
       }
@@ -830,9 +904,9 @@ function renderInvoiceValidation(doc) {
         
         <div class="mb-2">
           <strong>Детали счёта:</strong><br>
-          Сумма без НДС: <b>${fmt(doc.sumNoVAT || 0)} ${doc.currency || 'RUB'}</b><br>
-          Сумма с НДС: <b>${fmt(doc.sumTotal || 0)} ${doc.currency || 'RUB'}</b><br>
-          Срок оплаты: <b>${doc.paymentDue ?? '—'}</b><br>
+          Сумма без НДС: <b>${fmt(doc.amount?.amountNoVat || 0)} ${doc.amount?.currency || 'RUB'}</b><br>
+          Сумма с НДС: <b>${fmt(doc.amount?.amountTotal || 0)} ${doc.amount?.currency || 'RUB'}</b><br>
+          Срок оплаты: <b>${doc.plannedPaymentDate ?? '—'}</b><br>
           Статус проверки: <b>${statusColor === 'text-amber-600' ? 'Спорный случай' : (isValid ? 'ОК' : 'Ошибка')}</b>
         </div>
       </div>
@@ -849,7 +923,7 @@ function renderClosingExtras(doc) {
   if (!wrap) return;
   if (doc.type !== 'Closing') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
   const resolved = { ...doc };
   
   // Наследуем поля от родителя
@@ -873,7 +947,7 @@ function renderClosingExtras(doc) {
 
       <div>
         <div class="text-sm text-gray-500">Статус контрагента</div>
-        <div class="font-medium">${doc.counterpartyResidency ?? '—'}</div>
+        <div class="font-medium">${doc.counterpartyStatus ?? '—'}</div>
       </div>
       <div>
         <div class="text-sm text-gray-500">Статья бюджета ${doc.budgetArticle ? '' : '🔒'}</div>
@@ -936,7 +1010,7 @@ function renderClosingValidation(doc) {
   if (!box) return;
   if (doc.type !== 'Closing') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
   if (!parent) return;
 
   let limit = 0;
@@ -960,7 +1034,7 @@ function renderClosingValidation(doc) {
     limitSource = `сумма ${parent.type.toLowerCase()}`;
   }
 
-  const closingSum = doc.sumTotal || 0;
+    const closingSum = doc.amount?.amountTotal || 0;
   let isValid = true;
   let statusColor = 'text-gray-600';
   let statusIcon = 'ℹ️';
@@ -986,8 +1060,8 @@ function renderClosingValidation(doc) {
         
         <div class="mb-2">
           <strong>Детали закрытия:</strong><br>
-          Сумма без НДС: <b>${fmt(doc.sumNoVAT || 0)} ${doc.currency || 'RUB'}</b><br>
-          Сумма с НДС: <b>${fmt(doc.sumTotal || 0)} ${doc.currency || 'RUB'}</b><br>
+          Сумма без НДС: <b>${fmt(doc.amount?.amountNoVat || 0)} ${doc.amount?.currency || 'RUB'}</b><br>
+          Сумма с НДС: <b>${fmt(doc.amount?.amountTotal || 0)} ${doc.amount?.currency || 'RUB'}</b><br>
           Оплата: <b>${doc.paymentMode ?? '—'}</b><br>
           ${doc.plannedPaymentDate ? `Дата платежа: <b>${doc.plannedPaymentDate}</b><br>` : ''}
         </div>
@@ -1005,7 +1079,7 @@ function renderClosingTemplate(doc) {
   if (!box) return;
   if (doc.type !== 'Closing') return;
 
-  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const parent = getParentDoc(doc);
 
   const template = `
     <div class="mt-6 p-4 border rounded bg-gray-50">
@@ -1044,7 +1118,7 @@ function buildHierarchyMermaid(docs) {
   docs.forEach(doc => {
     const children = doc.children || doc.relations?.children || [];
     children.forEach(childId => {
-      const child = docs.find(d => d.id === childId);
+      const child = byId[childId];
       if (child) {
         // Проверка на запрещенную связь
         if (doc.type === 'Contract' && doc.contractKind === 'offer' && child.type === 'Attachment') {
@@ -1119,13 +1193,45 @@ function buildInheritanceMermaid(doc, parent) {
 if ($search) $search.addEventListener("input", () => renderList($search.value, $statusFilter?.value || ""));
 if ($statusFilter) $statusFilter.addEventListener("change", () => renderList($search?.value || "", $statusFilter.value));
 
+// Нормализация старых полей к единому виду
+function normalizeRelations(doc) {
+  if (!doc.relations) doc.relations = { parent: "", children: [] };
+  // если вдруг лежали старые поля
+  if (doc.parentId && !doc.relations.parent) doc.relations.parent = doc.parentId;
+  if (!Array.isArray(doc.relations.children)) doc.relations.children = [];
+  // Удаляем старые поля
+  delete doc.parentId;
+  delete doc.children;
+  return doc;
+}
+
+// Безопасное получение родителя
+function getParentId(doc) {
+  return doc?.relations?.parent || "";
+}
+
+function getParentDoc(doc) {
+  const pid = getParentId(doc);
+  return pid ? byId[pid] : null;
+}
+
 // Загрузка данных
 async function loadDocuments() {
   try {
+    console.log("Начинаем загрузку документов...");
     const response = await fetch('data/sample-docs.json');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     DOCS = await response.json();
+    console.log("JSON загружен, документов:", DOCS.length);
+    
+    // Нормализуем все документы
+    DOCS = DOCS.map(normalizeRelations);
+    // Обновляем byId
+    byId = Object.fromEntries(DOCS.map(d => [d.id, d]));
     renderList();
-    console.log("Документы загружены:", DOCS.length);
+    console.log("Документы загружены и отрендерены:", DOCS.length);
   } catch (error) {
     console.error('Ошибка загрузки документов:', error);
     // Fallback к встроенным данным
@@ -1133,14 +1239,28 @@ async function loadDocuments() {
       { id:"D-001", title:"Договор №123", type:"Договор аренды", status:"Действует",
         version:"1.0", date:"2025-09-01", author:"Иван Иванов",
         counterparty:"ООО Ромашка", projectNumber:"PRJ-2025-001",
-        parentId:null, children:["D-001-1","D-001-A"] }
+        relations: { parent: "", children: ["D-001-1", "D-001-A"] }
+      },
+      { id:"D-001-1", title:"Доп. соглашение №1", type:"Доп. соглашение", status:"В работе",
+        version:"1.0", date:"2025-09-02", author:null, counterparty:null, projectNumber:null,
+        relations: { parent: "D-001", children: [] }
+      }
     ];
+    // Нормализуем fallback данные
+    DOCS = DOCS.map(normalizeRelations);
+    // Обновляем byId
+    byId = Object.fromEntries(DOCS.map(d => [d.id, d]));
     renderList();
+    console.log("Fallback данные загружены:", DOCS.length);
   }
 }
 
 // старт
-loadDocuments();
+document.addEventListener('DOMContentLoaded', () => {
+  if (initDOMElements()) {
+    loadDocuments();
+  }
+});
 
 // ====== ДЕМО-РЕЖИМ (минимальная реализация) ======
 let tourIndex = 0;
