@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Карточка документа</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
 
   <!-- стили -->
   <style>
@@ -87,6 +88,10 @@
         <div id="app-extra" class="hidden"></div>
         <div id="cost-centers" class="hidden"></div>
         <div id="auto-template" class="hidden"></div>
+        
+        <!-- Контейнеры для диаграмм -->
+        <div id="mermaid-hierarchy" class="hidden mt-6"></div>
+        <div id="mermaid-inheritance" class="hidden mt-6"></div>
       </main>
     </div>
     <div class="mt-4 flex justify-end gap-2">

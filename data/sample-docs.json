@@ -194,7 +194,7 @@
     ],
     "relations": {
       "parent": "APP-1001",
-      "children": ["ATT-9001"]
+      "children": ["ATT-9001", "CLS-4001"]
     }
   },
   {
@@ -264,6 +264,116 @@
     "base": "ATT-9001",
     "relations": {
       "parent": "ATT-9001",
+      "children": ["CLS-4002"]
+    }
+  },
+  {
+    "id": "CLS-4001",
+    "title": "Акт сдачи-приёмки услуг по договору",
+    "type": "Closing",
+    "status": "В работе",
+    "createdAt": "2025-09-08",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "counterpartyResidency": "Резидент",
+    "budgetArticle": null,
+    "cashFlowArticle": null,
+    "content": "Закрытие работ за сентябрь.",
+    "regNumber": "ACT-2025-4001",
+    "paymentMode": "postpay",
+    "sum": 800000,
+    "sumNoVAT": 666667,
+    "sumTotal": 800000,
+    "currency": "RUB",
+    "plannedPaymentDate": "2025-09-20",
+    "author": "Ирина Черкасова",
+    "responsible": "Алексей Петров",
+    "responsibleDept": "IT",
+    "relations": {
+      "parent": "CTR-5001",
+      "children": []
+    }
+  },
+  {
+    "id": "CLS-4002",
+    "title": "Акт по трансферу (приложение №1)",
+    "type": "Closing",
+    "status": "В работе",
+    "createdAt": "2025-09-08",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "budgetArticle": null,
+    "cashFlowArticle": null,
+    "content": "Закрытие по трансферу.",
+    "regNumber": "ACT-2025-4002",
+    "paymentMode": "postpay",
+    "sum": 150000,
+    "sumNoVAT": 125000,
+    "sumTotal": 150000,
+    "currency": "RUB",
+    "plannedPaymentDate": "",
+    "author": "Ирина Черкасова",
+    "responsible": "Мария Кузнецова",
+    "responsibleDept": "Комплаенс",
+    "relations": {
+      "parent": "INV-3002",
+      "children": ["CLS-4002"]
+    }
+  },
+  {
+    "id": "CLS-4001",
+    "title": "Акт сдачи-приёмки услуг по договору",
+    "type": "Closing",
+    "status": "В работе",
+    "createdAt": "2025-09-08",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "counterpartyResidency": "Резидент",
+    "budgetArticle": null,
+    "cashFlowArticle": null,
+    "content": "Закрытие работ за сентябрь.",
+    "regNumber": "ACT-2025-4001",
+    "paymentMode": "postpay",
+    "sum": 800000,
+    "sumNoVAT": 666667,
+    "sumTotal": 800000,
+    "currency": "RUB",
+    "plannedPaymentDate": "2025-09-20",
+    "author": "Ирина Черкасова",
+    "responsible": "Алексей Петров",
+    "responsibleDept": "IT",
+    "relations": {
+      "parent": "CTR-5001",
+      "children": []
+    }
+  },
+  {
+    "id": "CLS-4002",
+    "title": "Акт по трансферу (приложение №1)",
+    "type": "Closing",
+    "status": "В работе",
+    "createdAt": "2025-09-08",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "budgetArticle": null,
+    "cashFlowArticle": null,
+    "content": "Закрытие по трансферу.",
+    "regNumber": "ACT-2025-4002",
+    "paymentMode": "postpay",
+    "sum": 150000,
+    "sumNoVAT": 125000,
+    "sumTotal": 150000,
+    "currency": "RUB",
+    "plannedPaymentDate": "",
+    "author": "Ирина Черкасова",
+    "responsible": "Мария Кузнецова",
+    "responsibleDept": "Комплаенс",
+    "relations": {
+      "parent": "INV-3002",
       "children": []
     }
   }

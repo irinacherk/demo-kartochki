@@ -99,6 +99,13 @@ function openCard(id) {
   renderAttachmentTemplate(doc);
   renderInvoiceExtras(doc);
   renderInvoiceValidation(doc);
+  renderClosingExtras(doc);
+  renderClosingValidation(doc);
+  renderClosingTemplate(doc);
+
+  // Построение диаграмм
+  buildHierarchyMermaid(DOCS);
+  buildInheritanceMermaid(doc, parent);
 
   // обновляем футер печати
   const footerTitle = document.getElementById("print-doc-title");
@@ -798,6 +805,273 @@ function renderInvoiceValidation(doc) {
   box.classList.remove('hidden');
 }
 
+// Рендеринг дополнительных полей для Closing
+function renderClosingExtras(doc) {
+  const wrap = document.getElementById('app-extra');
+  if (!wrap) return;
+  if (doc.type !== 'Closing') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const resolved = { ...doc };
+  
+  // Наследуем поля от родителя
+  if (parent) {
+    if (!resolved.organization) resolved.organization = parent.organization;
+    if (!resolved.counterparty) resolved.counterparty = parent.counterparty;
+    if (!resolved.budgetArticle) resolved.budgetArticle = parent.budgetArticle;
+    if (!resolved.cashFlowArticle) resolved.cashFlowArticle = parent.cashFlowArticle;
+  }
+
+  const block = `
+    <div class="grid grid-cols-2 gap-6 mt-6">
+      <div>
+        <div class="text-sm text-gray-500">Организация ${doc.organization ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.organization ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Контрагент ${doc.counterparty ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.counterparty ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Статус контрагента</div>
+        <div class="font-medium">${doc.counterpartyResidency ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Статья бюджета ${doc.budgetArticle ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.budgetArticle ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Статья ДДС ${doc.cashFlowArticle ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.cashFlowArticle ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Оплата</div>
+        <div class="font-medium">${doc.paymentMode ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Сумма без НДС</div>
+        <div class="font-medium">${fmt(doc.sumNoVAT || 0)} ${doc.currency || 'RUB'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Сумма с НДС</div>
+        <div class="font-medium">${fmt(doc.sumTotal || 0)} ${doc.currency || 'RUB'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Регистрационный номер</div>
+        <div class="font-medium">${doc.regNumber ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Дата планируемого платежа</div>
+        <div class="font-medium">${doc.plannedPaymentDate || '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Автор / Дата создания</div>
+        <div class="font-medium">
+          ${doc.author ?? '—'}${doc.createdAt ? ' — ' + doc.createdAt : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Ответственный</div>
+        <div class="font-medium">${doc.responsible ?? '—'}</div>
+      </div>
+
+      <div class="col-span-2">
+        <div class="text-sm text-gray-500">Содержание</div>
+        <div class="font-medium">${doc.content ?? '—'}</div>
+      </div>
+    </div>
+  `;
+
+  wrap.insertAdjacentHTML('beforeend', block);
+  wrap.classList.remove('hidden');
+}
+
+// Рендеринг проверки суммы для Closing
+function renderClosingValidation(doc) {
+  const box = document.getElementById('auto-template');
+  if (!box) return;
+  if (doc.type !== 'Closing') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  if (!parent) return;
+
+  let limit = 0;
+  let hasLimit = false;
+  let limitSource = '';
+
+  if (parent.type === 'Contract') {
+    const amounts = parent.amounts || {};
+    if (parent.paymentType === 'postpay') {
+      limit = amounts.postpay || 0;
+      hasLimit = true;
+      limitSource = 'постоплата договора';
+    } else if (parent.paymentType === 'partial') {
+      limit = amounts.postpay || 0;
+      hasLimit = true;
+      limitSource = 'постоплата договора (частичная оплата)';
+    }
+  } else if (parent.type === 'Attachment' || parent.type === 'Invoice') {
+    limit = parent.sumTotal || 0;
+    hasLimit = limit > 0;
+    limitSource = `сумма ${parent.type.toLowerCase()}`;
+  }
+
+  const closingSum = doc.sumTotal || 0;
+  let isValid = true;
+  let statusColor = 'text-gray-600';
+  let statusIcon = 'ℹ️';
+  let statusText = '';
+
+  if (hasLimit) {
+    isValid = closingSum >= limit;
+    statusColor = isValid ? 'text-green-600' : 'text-red-600';
+    statusIcon = isValid ? '✅' : '❌';
+    statusText = isValid ? 'Сумма соответствует лимиту' : 'Сумма меньше лимита';
+  } else {
+    statusText = 'Лимит у родителя отсутствует';
+  }
+
+  const template = `
+    <div class="mt-6 p-4 border rounded bg-gray-50">
+      <div class="font-semibold mb-2">Проверка суммы закрывающего документа</div>
+      <div class="text-sm leading-relaxed">
+        <div class="mb-3 p-2 rounded ${hasLimit ? (isValid ? 'bg-green-50' : 'bg-red-50') : 'bg-gray-50'}">
+          <span class="${statusColor} font-semibold">${statusIcon} ${statusText}</span><br>
+          ${hasLimit ? `<small>Закрытие: ${fmt(closingSum)} ₽ | Лимит (${limitSource}): ${fmt(limit)} ₽</small>` : '<small>Нет лимита у родителя</small>'}
+        </div>
+        
+        <div class="mb-2">
+          <strong>Детали закрытия:</strong><br>
+          Сумма без НДС: <b>${fmt(doc.sumNoVAT || 0)} ${doc.currency || 'RUB'}</b><br>
+          Сумма с НДС: <b>${fmt(doc.sumTotal || 0)} ${doc.currency || 'RUB'}</b><br>
+          Оплата: <b>${doc.paymentMode ?? '—'}</b><br>
+          ${doc.plannedPaymentDate ? `Дата платежа: <b>${doc.plannedPaymentDate}</b><br>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+
+  box.insertAdjacentHTML('beforeend', template);
+  box.classList.remove('hidden');
+}
+
+// Рендеринг автошаблона для Closing
+function renderClosingTemplate(doc) {
+  const box = document.getElementById('auto-template');
+  if (!box) return;
+  if (doc.type !== 'Closing') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+
+  const template = `
+    <div class="mt-6 p-4 border rounded bg-gray-50">
+      <div class="font-semibold mb-2">Автосгенерированный шаблон закрывающего документа</div>
+      <div class="text-sm leading-relaxed">
+        <strong>Акт закрытия</strong><br>
+        Организация: <b>${parent?.organization ?? '—'}</b><br>
+        Контрагент: <b>${parent?.counterparty ?? '—'}</b><br>
+        Основание: <b>${parent?.regNumber ?? parent?.id ?? '—'} (${parent?.title ?? '—'})</b><br>
+        Рег. номер акта: <b>${doc.regNumber ?? '—'}</b><br>
+        <br>
+        <strong>Финансовые условия:</strong><br>
+        Сумма: <b>${fmt(doc.sumTotal || 0)} ${doc.currency || 'RUB'}</b><br>
+        Оплата: <b>${doc.paymentMode ?? '—'}</b><br>
+        ${doc.plannedPaymentDate ? `Дата планируемого платежа: <b>${doc.plannedPaymentDate}</b><br>` : ''}
+        <br>
+        <strong>Содержание:</strong><br>
+        ${doc.content ?? '—'}
+      </div>
+    </div>
+  `;
+
+  box.insertAdjacentHTML('beforeend', template);
+  box.classList.remove('hidden');
+}
+
+// Построение диаграммы подчинённости
+function buildHierarchyMermaid(docs) {
+  const hierarchy = document.getElementById('mermaid-hierarchy');
+  if (!hierarchy) return;
+
+  hierarchy.classList.remove('hidden');
+  
+  let mermaidCode = 'graph TD\n';
+  
+  docs.forEach(doc => {
+    const children = doc.children || doc.relations?.children || [];
+    children.forEach(childId => {
+      const child = docs.find(d => d.id === childId);
+      if (child) {
+        mermaidCode += `  ${doc.id}["${doc.type}: ${doc.id}"] --> ${child.id}["${child.type}: ${child.id}"]\n`;
+      }
+    });
+  });
+
+  hierarchy.innerHTML = `
+    <div class="mb-4">
+      <h3 class="font-semibold mb-2">Схема подчинённости документов</h3>
+      <div class="mermaid">${mermaidCode}</div>
+    </div>
+  `;
+
+  // Инициализируем Mermaid
+  if (typeof mermaid !== 'undefined') {
+    mermaid.init();
+  }
+}
+
+// Построение диаграммы наследования
+function buildInheritanceMermaid(doc, parent) {
+  const inheritance = document.getElementById('mermaid-inheritance');
+  if (!inheritance) return;
+  if (!parent) {
+    inheritance.classList.add('hidden');
+    return;
+  }
+
+  inheritance.classList.remove('hidden');
+  
+  let mermaidCode = 'graph LR\n';
+  const inheritedFields = [];
+  
+  if (doc.organization === null && parent.organization) inheritedFields.push('Организация');
+  if (doc.counterparty === null && parent.counterparty) inheritedFields.push('Контрагент');
+  if (doc.budgetArticle === null && parent.budgetArticle) inheritedFields.push('Статья бюджета');
+  if (doc.cashFlowArticle === null && parent.cashFlowArticle) inheritedFields.push('Статья ДДС');
+  
+  inheritedFields.forEach(field => {
+    mermaidCode += `  Parent["${parent.type} ${parent.id}"] -- ${field} --> Child["${doc.type} ${doc.id}"]\n`;
+  });
+
+  if (inheritedFields.length === 0) {
+    inheritance.innerHTML = `
+      <div class="mb-4">
+        <h3 class="font-semibold mb-2">Наследование полей</h3>
+        <p class="text-gray-600">Нет наследуемых полей</p>
+      </div>
+    `;
+    return;
+  }
+
+  inheritance.innerHTML = `
+    <div class="mb-4">
+      <h3 class="font-semibold mb-2">Схема наследования полей</h3>
+      <div class="mermaid">${mermaidCode}</div>
+    </div>
+  `;
+
+  // Инициализируем Mermaid
+  if (typeof mermaid !== 'undefined') {
+    mermaid.init();
+  }
+}
+
 // фильтры
 if ($search) $search.addEventListener("input", () => renderList($search.value, $statusFilter?.value || ""));
 if ($statusFilter) $statusFilter.addEventListener("change", () => renderList($search?.value || "", $statusFilter.value));
@@ -906,6 +1180,18 @@ const TOUR_STEPS = [
     text: 'Счёт на предоплату: проверяет сумму (✅ 600,000 ≤ 600,000 предоплаты).',
     target: () => document.getElementById('doc-list'),
     onNext: () => openCard('INV-3001')
+  },
+  {
+    id: 'closing1',
+    text: 'Закрывающий документ: наследует поля от договора, проверяет лимит постоплаты.',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('CLS-4001')
+  },
+  {
+    id: 'closing2',
+    text: 'Акт по трансферу: показывает случай "лимит отсутствует" (серый индикатор).',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('CLS-4002')
   },
   {
     id: 'independent',
