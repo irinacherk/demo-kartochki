@@ -188,13 +188,14 @@
     "paymentTerm": "30 дней",
     "signsFirst": "Заказчик",
     "signedAt": null,
+    "contractKind": "standard",
     "costCenters": [
       {"cc": "ЦЗ-301 (IT)", "amount": 1200000},
       {"cc": "ЦЗ-402 (Админ)", "amount": 800000}
     ],
     "relations": {
       "parent": "APP-1001",
-      "children": ["ATT-9001", "CLS-4001"]
+      "children": ["ATT-9001", "CLS-4001", "INV-7002"]
     }
   },
   {
@@ -374,6 +375,85 @@
     "responsibleDept": "Комплаенс",
     "relations": {
       "parent": "INV-3002",
+      "children": []
+    }
+  },
+  {
+    "id": "CTR-8001",
+    "title": "Договор-оферта на поставку оборудования",
+    "type": "Contract",
+    "status": "В работе",
+    "createdAt": "2025-09-25",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "budgetArticle": null,
+    "regNumber": "CTR-2025-8001",
+    "author": "Анна Смирнова",
+    "responsible": "Петр Козлов",
+    "responsibleDept": "Юридический отдел",
+    "counterpartyResidency": "Резидент",
+    "cashFlowArticle": "Закупка оборудования",
+    "paymentType": "partial",
+    "amounts": {
+      "prepay": 500000,
+      "postpay": 1500000
+    },
+    "paymentTerm": "30 дней",
+    "signsFirst": "Заказчик",
+    "signedAt": null,
+    "contractKind": "offer",
+    "costCenters": [
+      {"cc": "ЦЗ-301 (IT)", "amount": 1000000},
+      {"cc": "ЦЗ-402 (Админ)", "amount": 1000000}
+    ],
+    "relations": {
+      "parent": "APP-1001",
+      "children": ["ATT-8001"]
+    }
+  },
+  {
+    "id": "ATT-8001",
+    "title": "Приложение к договору-оферте (запрещено)",
+    "type": "Attachment",
+    "status": "В работе",
+    "createdAt": "2025-09-26",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "budgetArticle": null,
+    "regNumber": "ATT-2025-8001",
+    "author": "Петр Козлов",
+    "responsible": "Мария Сидорова",
+    "responsibleDept": "IT-отдел",
+    "content": "Это приложение к договору-оферте - должно показывать баннер запрета.",
+    "relations": {
+      "parent": "CTR-8001",
+      "children": []
+    }
+  },
+  {
+    "id": "INV-7002",
+    "title": "Счёт на полную сумму (спорный случай)",
+    "type": "Invoice",
+    "status": "В работе",
+    "createdAt": "2025-09-27",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "regNumber": "INV-2025-7002",
+    "author": "Анна Смирнова",
+    "responsible": "Петр Козлов",
+    "responsibleDept": "Бухгалтерия",
+    "invoiceKind": "prepay",
+    "sum": 2000000,
+    "sumNoVAT": 1666667,
+    "sumTotal": 2000000,
+    "currency": "RUB",
+    "paymentDue": "10 рабочих дней",
+    "base": "CTR-5001",
+    "relations": {
+      "parent": "CTR-5001",
       "children": []
     }
   }

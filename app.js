@@ -426,6 +426,16 @@ function renderContractExtras(doc) {
         <div class="font-medium">${doc.signedAt || (doc.status === 'Подписан' ? new Date().toLocaleDateString('ru-RU') : '—')}</div>
       </div>
 
+      <div class="col-span-2">
+        <div class="text-sm text-gray-500">Тип договора</div>
+        <div class="font-medium">
+          ${doc.contractKind === 'offer' 
+            ? '<span class="px-2 py-1 rounded-full bg-orange-100 text-orange-700 text-sm">Договор-оферта</span>'
+            : '<span class="px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-sm">Договор</span>'
+          }
+        </div>
+      </div>
+
       <div>
         <div class="text-sm text-gray-500">Статья бюджета ${doc.budgetArticle ? '' : '🔒'}</div>
         <div class="font-medium">${resolved.budgetArticle ?? '—'}</div>
@@ -643,6 +653,22 @@ function renderAttachmentExtras(doc) {
 
   wrap.insertAdjacentHTML('beforeend', block);
   wrap.classList.remove('hidden');
+
+  // Проверка запрета подчинения к договору-оферте
+  if (parent && parent.type === 'Contract' && parent.contractKind === 'offer') {
+    const warningBlock = `
+      <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded">
+        <div class="flex items-center">
+          <span class="text-red-600 text-lg mr-2">⚠️</span>
+          <div>
+            <div class="font-semibold text-red-800">Подчинение к договору-оферте запрещено</div>
+            <div class="text-sm text-red-600">По правилам системы, к договору-оферте нельзя прикреплять приложения</div>
+          </div>
+        </div>
+      </div>
+    `;
+    wrap.insertAdjacentHTML('beforeend', warningBlock);
+  }
 }
 
 // Рендеринг автошаблона для Attachment
@@ -763,22 +789,32 @@ function renderInvoiceValidation(doc) {
   if (parent.type === 'Contract') {
     const invoiceSum = doc.sumTotal || 0;
     const parentAmounts = parent.amounts || {};
+    const totalContractSum = (parentAmounts.prepay || 0) + (parentAmounts.postpay || 0);
     
-    if (doc.invoiceKind === 'prepay') {
-      const prepayLimit = parentAmounts.prepay || 0;
-      isValid = invoiceSum <= prepayLimit;
-      validationText = `Предоплата: ${fmt(invoiceSum)} ≤ ${fmt(prepayLimit)}`;
-    } else if (doc.invoiceKind === 'postpay') {
-      const postpayLimit = parentAmounts.postpay || 0;
-      isValid = invoiceSum <= postpayLimit;
-      validationText = `Постоплата: ${fmt(invoiceSum)} ≤ ${fmt(postpayLimit)}`;
-    } else if (doc.invoiceKind === 'transfer') {
-      isValid = true;
-      validationText = 'Трансфер: проверка не требуется';
+    // Проверка на спорный случай
+    if (parent.paymentType === 'partial' && invoiceSum === totalContractSum) {
+      isValid = false; // спорный случай
+      statusColor = 'text-amber-600';
+      statusIcon = '⚠️';
+      validationText = 'Спорный случай: счёт на 100% при частичной оплате';
+    } else {
+      // Обычные проверки
+      if (doc.invoiceKind === 'prepay') {
+        const prepayLimit = parentAmounts.prepay || 0;
+        isValid = invoiceSum <= prepayLimit;
+        validationText = `Предоплата: ${fmt(invoiceSum)} ≤ ${fmt(prepayLimit)}`;
+      } else if (doc.invoiceKind === 'postpay') {
+        const postpayLimit = parentAmounts.postpay || 0;
+        isValid = invoiceSum <= postpayLimit;
+        validationText = `Постоплата: ${fmt(invoiceSum)} ≤ ${fmt(postpayLimit)}`;
+      } else if (doc.invoiceKind === 'transfer') {
+        isValid = true;
+        validationText = 'Трансфер: проверка не требуется';
+      }
     }
   }
 
-  if (!isValid) {
+  if (!isValid && statusColor !== 'text-amber-600') {
     statusColor = 'text-red-600';
     statusIcon = '❌';
   }
@@ -787,15 +823,17 @@ function renderInvoiceValidation(doc) {
     <div class="mt-6 p-4 border rounded bg-gray-50">
       <div class="font-semibold mb-2">Проверка суммы счёта</div>
       <div class="text-sm leading-relaxed">
-        <div class="mb-3 p-2 rounded ${isValid ? 'bg-green-50' : 'bg-red-50'}">
+        <div class="mb-3 p-2 rounded ${statusColor === 'text-amber-600' ? 'bg-amber-50' : (isValid ? 'bg-green-50' : 'bg-red-50')}">
           <span class="${statusColor} font-semibold">${statusIcon} ${validationText}</span>
+          ${statusColor === 'text-amber-600' ? '<br><small class="text-amber-700">Счёт выставлен на 100% при частичной оплате договора — требует уточнения правил (разделение на предоплату/постоплату?)</small>' : ''}
         </div>
         
         <div class="mb-2">
           <strong>Детали счёта:</strong><br>
           Сумма без НДС: <b>${fmt(doc.sumNoVAT || 0)} ${doc.currency || 'RUB'}</b><br>
           Сумма с НДС: <b>${fmt(doc.sumTotal || 0)} ${doc.currency || 'RUB'}</b><br>
-          Срок оплаты: <b>${doc.paymentDue ?? '—'}</b>
+          Срок оплаты: <b>${doc.paymentDue ?? '—'}</b><br>
+          Статус проверки: <b>${statusColor === 'text-amber-600' ? 'Спорный случай' : (isValid ? 'ОК' : 'Ошибка')}</b>
         </div>
       </div>
     </div>
@@ -1008,7 +1046,12 @@ function buildHierarchyMermaid(docs) {
     children.forEach(childId => {
       const child = docs.find(d => d.id === childId);
       if (child) {
-        mermaidCode += `  ${doc.id}["${doc.type}: ${doc.id}"] --> ${child.id}["${child.type}: ${child.id}"]\n`;
+        // Проверка на запрещенную связь
+        if (doc.type === 'Contract' && doc.contractKind === 'offer' && child.type === 'Attachment') {
+          mermaidCode += `  ${doc.id}["${doc.type}: ${doc.id}"] -.->|запрещено| ${child.id}["${child.type}: ${child.id}"]\n`;
+        } else {
+          mermaidCode += `  ${doc.id}["${doc.type}: ${doc.id}"] --> ${child.id}["${child.type}: ${child.id}"]\n`;
+        }
       }
     });
   });
@@ -1192,6 +1235,29 @@ const TOUR_STEPS = [
     text: 'Акт по трансферу: показывает случай "лимит отсутствует" (серый индикатор).',
     target: () => document.getElementById('doc-list'),
     onNext: () => openCard('CLS-4002')
+  },
+  {
+    id: 'offer',
+    text: 'Договор-оферта: обратите внимание на оранжевый бейдж "Договор-оферта".',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('CTR-8001')
+  },
+  {
+    id: 'forbidden',
+    text: 'Приложение к оферте: красный баннер "Подчинение к договору-оферте запрещено".',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('ATT-8001')
+  },
+  {
+    id: 'disputed',
+    text: 'Спорный случай: счёт на полную сумму при частичной оплате (янтарный индикатор).',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('INV-7002')
+  },
+  {
+    id: 'diagram',
+    text: 'Диаграмма подчинённости: пунктирная красная связь показывает запрещенное подчинение.',
+    target: () => document.getElementById('mermaid-hierarchy')
   },
   {
     id: 'independent',
