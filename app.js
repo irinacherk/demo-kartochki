@@ -2,6 +2,16 @@ let DOCS = [];
 
 const INHERITED = ["author","counterparty","projectNumber"];
 
+const STATUS_META = {
+  active:        { text: 'Действует',     cls: 'bg-green-100 text-green-800' },
+  signed:        { text: 'Подписан',       cls: 'bg-blue-100 text-blue-800'  },
+  in_work:       { text: 'В работе',       cls: 'bg-amber-100 text-amber-800'},
+  draft:         { text: 'Черновик',       cls: 'bg-gray-100 text-gray-700'  },
+  archived:      { text: 'Архив',          cls: 'bg-slate-100 text-slate-700'},
+  issued:        { text: 'Выставлен',      cls: 'bg-purple-100 text-purple-800'},
+  disputed:      { text: 'Спорный случай', cls: 'bg-amber-200 text-amber-900 border border-amber-300' }
+};
+
 let $list, $main, $search, $statusFilter;
 
 // Инициализация DOM элементов
@@ -32,6 +42,43 @@ function getStatusBadge(status) {
   return `<span class="${classes}">${status}</span>`;
 }
 
+function renderTopStatusBadge(doc){
+  try{
+    const meta = STATUS_META[doc.status] || STATUS_META.in_work;
+    const host = document.getElementById('card-title-wrap') 
+              || document.querySelector('#card h2') 
+              || document.getElementById('card');
+
+    if (!host) return;
+
+    // убираем старый бейдж, если перерисовываем карточку
+    const old = host.querySelector('.top-status-badge');
+    if (old) old.remove();
+
+    const badge = document.createElement('span');
+    badge.className = `top-status-badge inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium ml-3 align-middle ${meta.cls}`;
+    badge.innerHTML = `
+      <span class="w-2 h-2 rounded-full bg-current opacity-80"></span>
+      ${meta.text}
+    `;
+    // вставим сразу после заголовка
+    const title = host.querySelector('h2') || host.firstElementChild;
+    if (title) title.insertAdjacentElement('afterend', badge);
+    else host.prepend(badge);
+  }catch(e){ console.warn('status badge fail', e); }
+}
+
+function reorderBlocks(){
+  const cardBody   = document.getElementById('card') || document;
+  const tmplBlock  = document.getElementById('auto-template');
+  const relBlock   = document.getElementById('relations-block');
+
+  if (tmplBlock && relBlock && tmplBlock.compareDocumentPosition(relBlock) & Node.DOCUMENT_POSITION_FOLLOWING){
+    // Переносим шаблоны выше связей — прямо перед блоком связей
+    relBlock.parentNode.insertBefore(tmplBlock, relBlock);
+  }
+}
+
 function renderList(filter="", status="") {
   if (!$list) {
     console.error('$list не инициализирован');
@@ -46,138 +93,109 @@ function renderList(filter="", status="") {
     li.className = "px-3 py-2 rounded hover:bg-gray-100 cursor-pointer flex justify-between items-center";
     const typeBadge = `<span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 ml-2">${d.type}</span>`;
     li.innerHTML = `<div class="flex items-center"><span>${d.title}</span>${typeBadge}</div>${getStatusBadge(d.status)}`;
-    li.onclick = () => openCard(d.id);
+    li.dataset.id = d.id;
+    li.onclick = (e) => {
+      e.preventDefault();
+      const id = e.currentTarget.dataset.id;   // не event, не doc — именно id
+      openCard(id);
+    };
     $list.appendChild(li);
   });
 }
 
-function withInheritance(doc) {
-  if (!doc) return { doc: null, parent: null, resolved: {} }; // защита на всякий случай
-
-  // если у документа нет родителя — возвращаем его как есть
+function withInheritance(raw) {
+  // супер-guard: на случай, если вместо объекта пришёл event/undefined
+  const doc = (raw && typeof raw === 'object' && !('target' in raw)) ? raw : {};
+  
+  // Проверяем наличие родителя в новой структуре
   const parentId = doc.relations?.parent || doc.parentId;
-  if (!parentId) return { doc, parent: null, resolved: { ...doc } };
+  if (!parentId) return { ...doc };
 
-  // ищем родительский документ
-  const parent = byId[parentId] || DOCS.find(d => d.id === parentId);
-  if (!parent) return { doc, parent: null, resolved: { ...doc } }; // если родитель не найден — просто возвращаем исходный документ
+  const pool = Array.isArray(window.DOCS) ? window.DOCS : [];
+  const parent = pool.find(d => d && d.id === parentId);
+  if (!parent) return { ...doc };
 
-  // создаём копию документа
-  const resolved = { ...doc };
-
-  // копируем поля из родителя, если они отсутствуют у текущего документа
+  const child = { ...doc };
   const inheritFields = [
-    'organization',
-    'counterparty',
-    'budgetArticle',
-    'costCenters',
-    'cashFlowArticle',
-    'paymentType',
-    'author',
-    'projectNumber'
+    'organization', 'counterparty', 'budgetArticle',
+    'costCenters', 'cashFlowArticle', 'paymentType', 'currency', 'author', 'projectNumber'
   ];
-
-  for (const field of inheritFields) {
-    if (resolved[field] == null && parent[field] != null) {
-      resolved[field] = parent[field];
-    }
+  for (const f of inheritFields) {
+    if (child[f] == null && parent[f] != null) child[f] = parent[f];
   }
-
-  return { doc, parent, resolved };
+  return child;
 }
 
 function openCard(id) {
-  if (!$main) {
-    console.error('$main не инициализирован');
-    return;
-  }
-  const doc = byId[id];
-  if (!doc) {
-    console.error('Документ не найден:', id);
-    return;
-  }
-  
   try {
-    // страховка от undefined
-    normalizeRelations(doc);
-    const result = withInheritance(doc);
-    const { doc: normalizedDoc, parent, resolved } = result || { doc, parent: null, resolved: { ...doc } };
+    const base =
+      (window.byId && window.byId[id]) ||
+      (window.DOCS || []).find(d => d && d.id === id);
+    if (!base) { console.warn('Документ не найден:', id); return; }
 
-  // Скрываем сообщение "Выберите документ"
-  const welcomeDiv = $main.querySelector('div:first-child');
-  if (welcomeDiv) welcomeDiv.style.display = 'none';
+    const doc = withInheritance(base);
 
-  const childrenIds = normalizedDoc.children || normalizedDoc.relations?.children || [];
-  const childrenHtml = childrenIds
-    .map(cid => {
-      const childDoc = byId[cid];
-      return childDoc ? `<a href="#" data-child="${cid}" class="underline hover:no-underline">${childDoc.title}</a>` : '';
-    })
-    .filter(Boolean).join(", ") || "—";
+    document.getElementById('app-extra')?.replaceChildren();
+    document.getElementById('auto-template')?.replaceChildren();
 
-  $main.innerHTML = `
-    <div class="p-6 w-full text-left">
-      <h2 class="text-xl font-bold mb-4">${resolved.title}</h2>
-      <div class="grid grid-cols-2 gap-4">
-        ${field("Тип", resolved.type)}
-        ${field("Статус", resolved.status, true)}
-        ${field("Версия", resolved.version)}
-        ${field("Дата создания", resolved.date || resolved.createdAt)}
-        ${field("Автор", resolved.author, false, normalizedDoc.author==null, parent)}
-        ${field("Контрагент", resolved.counterparty, false, normalizedDoc.counterparty==null, parent)}
-        ${field("Номер проекта", resolved.projectNumber, false, normalizedDoc.projectNumber==null, parent)}
-      </div>
-      <div class="mt-6">
-        <h3 class="font-semibold mb-2">Связи</h3>
-        <p class="text-sm text-gray-600">Родитель: ${ parent ? `<b>${parent.title}</b>` : "—" }</p>
-        <p class="text-sm text-gray-600">Дочерние: ${childrenHtml}</p>
-      </div>
-    </div>
-  `;
+    // Скрываем сообщение "Выберите документ"
+    const welcomeDiv = $main.querySelector('div:first-child');
+    if (welcomeDiv) welcomeDiv.style.display = 'none';
 
-  // кликабельные дети
-  $main.querySelectorAll('[data-child]').forEach(a => {
-    a.addEventListener('click', e => {
-      e.preventDefault();
-      openCard(e.currentTarget.dataset.child);
-    });
-  });
-
-  // Рендеринг дополнительных полей для новых типов документов
-  renderApplicationExtras(normalizedDoc);
-  renderCostCentersTable(normalizedDoc);
-  renderApplicationTemplate(normalizedDoc);
-  renderAgreementExtras(normalizedDoc);
-  renderAgreementTemplates(normalizedDoc);
-  renderContractExtras(normalizedDoc);
-  renderContractAmounts(normalizedDoc);
-  renderInheritedCostCenters(normalizedDoc);
-  renderContractTemplate(normalizedDoc);
-  renderAttachmentExtras(normalizedDoc);
-  renderAttachmentTemplate(normalizedDoc);
-  renderInvoiceExtras(normalizedDoc);
-  renderInvoiceValidation(normalizedDoc);
-  renderClosingExtras(normalizedDoc);
-  renderClosingValidation(normalizedDoc);
-  renderClosingTemplate(normalizedDoc);
-
-  // Построение диаграмм
-  buildHierarchyMermaid(DOCS);
-  buildInheritanceMermaid(normalizedDoc, parent);
-
-  // обновляем футер печати
-  const footerTitle = document.getElementById("print-doc-title");
-  if (footerTitle) footerTitle.textContent = resolved.title || "Без названия";
-  
-  } catch (error) {
-    console.error('Ошибка при открытии карточки:', error);
     $main.innerHTML = `
       <div class="p-6 w-full text-left">
-        <h2 class="text-xl font-bold mb-4 text-red-600">Ошибка загрузки документа</h2>
-        <p class="text-gray-600">Не удалось загрузить документ: ${id}</p>
-        <p class="text-sm text-gray-500 mt-2">Ошибка: ${error.message}</p>
+        <h2 class="text-xl font-bold mb-4">${doc.title || 'Без названия'}</h2>
+        <div class="grid grid-cols-2 gap-4">
+          ${field("Тип", doc.type)}
+          ${field("Статус", doc.status, true)}
+          ${field("Версия", doc.version)}
+          ${field("Дата создания", doc.date || doc.createdAt)}
+          ${field("Автор", doc.author)}
+          ${field("Контрагент", doc.counterparty)}
+          ${field("Номер проекта", doc.projectNumber)}
+        </div>
+        <div class="mt-6">
+          <h3 class="font-semibold mb-2">Связи</h3>
+          <p class="text-sm text-gray-600">Родитель: —</p>
+          <p class="text-sm text-gray-600">Дочерние: —</p>
+        </div>
       </div>
     `;
+
+    // Вставляем бейдж статуса сверху
+    renderTopStatusBadge(doc);
+
+    renderApplicationExtras?.(doc);
+    renderCostCentersTable?.(doc);
+    renderApplicationTemplate?.(doc);
+    renderAgreementExtras?.(doc);
+    renderAgreementTemplates?.(doc);
+    renderContractExtras?.(doc);
+    renderContractAmounts?.(doc);
+    renderInheritedCostCenters?.(doc);
+    renderContractTemplate?.(doc);
+    renderAttachmentExtras?.(doc);
+    renderAttachmentTemplate?.(doc);
+    renderInvoiceExtras?.(doc);
+    renderInvoiceValidation?.(doc);
+    renderClosingExtras?.(doc);
+    renderClosingValidation?.(doc);
+    renderClosingTemplate?.(doc);
+
+    // Построение диаграмм
+    buildHierarchyMermaid?.(DOCS);
+    buildInheritanceMermaid?.(doc, null);
+
+    // Переставляем блоки: шаблоны выше, связи ниже
+    reorderBlocks();
+
+    // обновляем футер печати
+    const footerTitle = document.getElementById("print-doc-title");
+    if (footerTitle) footerTitle.textContent = doc.title || "Без названия";
+    
+  } catch (e) {
+    console.error('openCard failed:', e);
+    alert('Не удалось открыть карточку. Подробности в консоли.');
   }
 }
 
