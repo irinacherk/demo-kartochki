@@ -36,8 +36,9 @@ function renderList(filter="", status="") {
 }
 
 function withInheritance(doc) {
-  if (!doc.parentId) return { doc, parent: null, resolved: { ...doc } };
-  const parent = byId[doc.parentId];
+  const parentId = doc.parentId || doc.relations?.parent;
+  if (!parentId) return { doc, parent: null, resolved: { ...doc } };
+  const parent = byId[parentId];
   const resolved = { ...doc };
   INHERITED.forEach(k => { if (resolved[k] == null && parent) resolved[k] = parent[k]; });
   return { doc, parent, resolved };
@@ -50,7 +51,8 @@ function openCard(id) {
   const welcomeDiv = $main.querySelector('div:first-child');
   if (welcomeDiv) welcomeDiv.style.display = 'none';
 
-  const childrenHtml = (doc.children || [])
+  const childrenIds = doc.children || doc.relations?.children || [];
+  const childrenHtml = childrenIds
     .map(cid => byId[cid] ? `<a href="#" data-child="${cid}" class="underline hover:no-underline">${byId[cid].title}</a>` : '')
     .filter(Boolean).join(", ") || "—";
 
@@ -88,6 +90,10 @@ function openCard(id) {
   renderApplicationTemplate(doc);
   renderAgreementExtras(doc);
   renderAgreementTemplates(doc);
+  renderContractExtras(doc);
+  renderContractAmounts(doc);
+  renderInheritedCostCenters(doc);
+  renderContractTemplate(doc);
 
   // обновляем футер печати
   const footerTitle = document.getElementById("print-doc-title");
@@ -340,6 +346,220 @@ function renderAgreementTemplates(doc) {
   box.classList.remove('hidden');
 }
 
+// Рендеринг дополнительных полей для Contract
+function renderContractExtras(doc) {
+  const wrap = document.getElementById('app-extra');
+  if (!wrap) return;
+  if (doc.type !== 'Contract') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const resolved = { ...doc };
+  
+  // Наследуем поля от родителя Application
+  if (parent) {
+    if (!resolved.organization) resolved.organization = parent.organization;
+    if (!resolved.counterparty) resolved.counterparty = parent.counterparty;
+    if (!resolved.budgetArticle) resolved.budgetArticle = parent.budgetArticle;
+    if (!resolved.projectNumber) resolved.projectNumber = parent.projectNumber;
+  }
+
+  const block = `
+    <div class="grid grid-cols-2 gap-6 mt-6">
+      <div>
+        <div class="text-sm text-gray-500">Организация ${doc.organization ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.organization ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Контрагент ${doc.counterparty ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.counterparty ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Статус контрагента</div>
+        <div class="font-medium">${doc.counterpartyResidency ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">ДДС статья</div>
+        <div class="font-medium">${doc.cashFlowArticle ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Тип оплаты</div>
+        <div class="font-medium">${doc.paymentType ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Срок оплаты</div>
+        <div class="font-medium">${doc.paymentTerm ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Кто подписывает первым</div>
+        <div class="font-medium">${doc.signsFirst ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Дата подписания</div>
+        <div class="font-medium">${doc.signedAt || (doc.status === 'Подписан' ? new Date().toLocaleDateString('ru-RU') : '—')}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Статья бюджета ${doc.budgetArticle ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.budgetArticle ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Номер проекта ${doc.projectNumber ? '' : '🔒'}</div>
+        <div class="font-medium">${resolved.projectNumber ?? '—'}</div>
+      </div>
+    </div>
+  `;
+
+  wrap.insertAdjacentHTML('beforeend', block);
+  wrap.classList.remove('hidden');
+}
+
+// Рендеринг сумм договора
+function renderContractAmounts(doc) {
+  const host = document.getElementById('cost-centers');
+  if (!host) return;
+  if (doc.type !== 'Contract') return;
+
+  host.classList.remove('hidden');
+  const amounts = doc.amounts || {};
+  const paymentType = doc.paymentType || 'prepay';
+  
+  let amountsHtml = '';
+  
+  if (paymentType === 'partial') {
+    amountsHtml = `
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <div class="text-sm text-gray-500">Предоплата</div>
+          <div class="font-medium text-lg">${fmt(amounts.prepay || 0)} ₽</div>
+        </div>
+        <div>
+          <div class="text-sm text-gray-500">Постоплата</div>
+          <div class="font-medium text-lg">${fmt(amounts.postpay || 0)} ₽</div>
+        </div>
+      </div>
+    `;
+  } else if (paymentType === 'prepay') {
+    amountsHtml = `
+      <div>
+        <div class="text-sm text-gray-500">Предоплата</div>
+        <div class="font-medium text-lg">${fmt(amounts.prepay || 0)} ₽</div>
+      </div>
+    `;
+  } else if (paymentType === 'postpay') {
+    amountsHtml = `
+      <div>
+        <div class="text-sm text-gray-500">Постоплата</div>
+        <div class="font-medium text-lg">${fmt(amounts.postpay || 0)} ₽</div>
+      </div>
+    `;
+  }
+
+  const total = (amounts.prepay || 0) + (amounts.postpay || 0);
+
+  host.innerHTML = `
+    <div class="mt-6">
+      <div class="text-sm text-gray-500 mb-2">Суммы договора</div>
+      ${amountsHtml}
+      <div class="mt-4 p-3 bg-gray-50 rounded">
+        <div class="text-sm text-gray-500">Итого по договору</div>
+        <div class="font-bold text-xl">${fmt(total)} ₽</div>
+      </div>
+    </div>
+  `;
+}
+
+// Рендеринг наследуемых кост-центров с проверкой суммы
+function renderInheritedCostCenters(doc) {
+  const box = document.getElementById('auto-template');
+  if (!box) return;
+  if (doc.type !== 'Contract') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  if (!parent) return;
+
+  const contractTotal = (doc.amounts?.prepay || 0) + (doc.amounts?.postpay || 0);
+  const parentTotal = parent.totalAmount || 0;
+  const isValid = contractTotal >= parentTotal;
+  
+  const statusColor = isValid ? 'text-green-600' : 'text-red-600';
+  const statusIcon = isValid ? '✅' : '❌';
+  const statusText = isValid ? 'Сумма договора соответствует заявке' : 'Сумма договора меньше суммы заявки';
+
+  const costCentersHtml = (doc.costCenters || [])
+    .map(r => `— ${r.cc}: ${fmt(r.amount || 0)} ₽`).join('<br>');
+
+  const template = `
+    <div class="mt-6 p-4 border rounded bg-gray-50">
+      <div class="font-semibold mb-2">Проверка суммы и кост-центры</div>
+      <div class="text-sm leading-relaxed">
+        <div class="mb-3 p-2 rounded ${isValid ? 'bg-green-50' : 'bg-red-50'}">
+          <span class="${statusColor} font-semibold">${statusIcon} ${statusText}</span><br>
+          <small>Договор: ${fmt(contractTotal)} ₽ | Заявка: ${fmt(parentTotal)} ₽</small>
+        </div>
+        
+        <div class="mb-2">
+          <strong>Наследуемые кост-центры:</strong><br>
+          ${costCentersHtml || '—'}
+        </div>
+      </div>
+    </div>
+  `;
+
+  box.insertAdjacentHTML('beforeend', template);
+  box.classList.remove('hidden');
+}
+
+// Рендеринг автошаблона для Contract
+function renderContractTemplate(doc) {
+  const box = document.getElementById('auto-template');
+  if (!box) return;
+  if (doc.type !== 'Contract') return;
+
+  const parent = doc.relations?.parent ? byId[doc.relations.parent] : null;
+  const amounts = doc.amounts || {};
+  const total = (amounts.prepay || 0) + (amounts.postpay || 0);
+  
+  let paymentText = '';
+  if (doc.paymentType === 'partial') {
+    paymentText = `Предоплата: ${fmt(amounts.prepay || 0)} ₽, постоплата: ${fmt(amounts.postpay || 0)} ₽`;
+  } else if (doc.paymentType === 'prepay') {
+    paymentText = `Предоплата: ${fmt(amounts.prepay || 0)} ₽`;
+  } else if (doc.paymentType === 'postpay') {
+    paymentText = `Постоплата: ${fmt(amounts.postpay || 0)} ₽`;
+  }
+
+  const template = `
+    <div class="mt-6 p-4 border rounded bg-gray-50">
+      <div class="font-semibold mb-2">Автосгенерированный шаблон договора</div>
+      <div class="text-sm leading-relaxed">
+        <strong>Договор поставки</strong><br>
+        Организация: <b>${parent?.organization ?? '—'}</b><br>
+        Контрагент: <b>${parent?.counterparty ?? '—'}</b><br>
+        Рег. номер: <b>${doc.regNumber ?? '—'}</b><br>
+        Статья бюджета: <b>${parent?.budgetArticle ?? '—'}</b><br>
+        ДДС статья: <b>${doc.cashFlowArticle ?? '—'}</b><br>
+        <br>
+        <strong>Условия оплаты:</strong><br>
+        Тип: <b>${doc.paymentType ?? '—'}</b><br>
+        ${paymentText}<br>
+        Срок оплаты: <b>${doc.paymentTerm ?? '—'}</b><br>
+        <br>
+        <strong>Подписание:</strong><br>
+        Кто подписывает первым: <b>${doc.signsFirst ?? '—'}</b><br>
+        Дата подписания: <b>${doc.signedAt || (doc.status === 'Подписан' ? new Date().toLocaleDateString('ru-RU') : '—')}</b><br>
+        <br>
+        <strong>Итого по договору: ${fmt(total)} ₽</strong>
+      </div>
+    </div>
+  `;
+
+  box.insertAdjacentHTML('beforeend', template);
+  box.classList.remove('hidden');
+}
+
 // фильтры
 if ($search) $search.addEventListener("input", () => renderList($search.value, $statusFilter?.value || ""));
 if ($statusFilter) $statusFilter.addEventListener("change", () => renderList($search?.value || "", $statusFilter.value));
@@ -424,6 +644,18 @@ const TOUR_STEPS = [
     text: 'Есть поиск по названию. Введите «договор», чтобы отфильтровать список.',
     target: () => document.getElementById('search'),
     onNext: () => { const s = document.getElementById('search'); if (s) s.focus(); }
+  },
+  {
+    id: 'application',
+    text: 'Заявка на закупку: показывает кост-центры и автошаблон.',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('APP-1001')
+  },
+  {
+    id: 'contract',
+    text: 'Договор: наследует поля от заявки, проверяет сумму (✅ 2,000,000 ≥ 2,000,000).',
+    target: () => document.getElementById('doc-list'),
+    onNext: () => openCard('CTR-5001')
   },
   {
     id: 'independent',

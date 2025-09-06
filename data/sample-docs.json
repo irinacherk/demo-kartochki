@@ -134,5 +134,66 @@
     "responsible": "Мария Кузнецова",
     "responsibleDept": "Комплаенс",
     "relations": { "parent": "", "children": [] }
+  },
+  {
+    "id": "APP-1001",
+    "title": "Заявка на закупку IT-оборудования",
+    "type": "Application",
+    "status": "В работе",
+    "createdAt": "2025-09-10",
+    "version": "1.0",
+    "organization": "ООО ТехноСтар",
+    "counterparty": "ЗАО КомпьютерМир",
+    "confidentiality": "Для служебного пользования",
+    "budgetArticle": "IT-оборудование",
+    "content": "Закупка серверного оборудования и рабочих станций для нового офиса.",
+    "regNumber": "APP-2025-020",
+    "author": "Алексей Петров",
+    "responsible": "Мария Сидорова",
+    "responsibleDept": "IT-отдел",
+    "projectNumber": "PRJ-2025-015",
+    "totalAmount": 2000000,
+    "costCenters": [
+      {"cc": "ЦЗ-301 (IT)", "amount": 1200000},
+      {"cc": "ЦЗ-402 (Админ)", "amount": 800000}
+    ],
+    "relations": {
+      "parent": "",
+      "children": ["CTR-5001"]
+    }
+  },
+  {
+    "id": "CTR-5001",
+    "title": "Договор поставки IT-оборудования",
+    "type": "Contract",
+    "status": "В работе",
+    "createdAt": "2025-09-12",
+    "version": "1.0",
+    "organization": null,
+    "counterparty": null,
+    "budgetArticle": null,
+    "regNumber": "CTR-2025-008",
+    "author": "Анна Смирнова",
+    "responsible": "Петр Козлов",
+    "responsibleDept": "Юридический отдел",
+    "projectNumber": null,
+    "counterpartyResidency": "Резидент",
+    "cashFlowArticle": "Закупка оборудования",
+    "paymentType": "partial",
+    "amounts": {
+      "prepay": 600000,
+      "postpay": 1400000
+    },
+    "paymentTerm": "30 дней",
+    "signsFirst": "Заказчик",
+    "signedAt": null,
+    "costCenters": [
+      {"cc": "ЦЗ-301 (IT)", "amount": 1200000},
+      {"cc": "ЦЗ-402 (Админ)", "amount": 800000}
+    ],
+    "relations": {
+      "parent": "APP-1001",
+      "children": []
+    }
   }
 ]
