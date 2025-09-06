@@ -1,26 +1,4 @@
-const DOCS = [
-  { id:"D-001", title:"Договор №123", type:"Договор аренды", status:"Действует",
-    version:"1.0", date:"2025-09-01", author:"Иван Иванов",
-    counterparty:"ООО Ромашка", projectNumber:"PRJ-2025-001",
-    parentId:null, children:["D-001-1","D-001-A"] },
-  { id:"D-001-1", title:"Доп. соглашение №1", type:"Доп. соглашение", status:"Подписан",
-    version:"1.0", date:"2025-09-03", author:null, counterparty:null,
-    projectNumber:null, parentId:"D-001", children:[] },
-  { id:"D-001-A", title:"Приложение А", type:"Приложение", status:"Черновик",
-    version:"0.3", date:"2025-09-04", author:null, counterparty:null,
-    projectNumber:null, parentId:"D-001", children:[] },
-  { id:"D-002", title:"Договор поставки №456", type:"Договор поставки", status:"В работе",
-    version:"2.0", date:"2025-08-15", author:"Петр Петров",
-    counterparty:"ООО Василек", projectNumber:"PRJ-2025-002",
-    parentId:null, children:["D-002-1"] },
-  { id:"D-002-1", title:"Спецификация №1", type:"Приложение", status:"Подписан",
-    version:"1.0", date:"2025-08-20", author:null, counterparty:null,
-    projectNumber:null, parentId:"D-002", children:[] },
-  { id:"D-003", title:"Соглашение о конфиденциальности", type:"NDA", status:"Действует",
-    version:"1.0", date:"2025-07-10", author:"Анна Смирнова",
-    counterparty:"ЗАО Ландыш", projectNumber:"PRJ-2025-003",
-    parentId:null, children:[] }
-];
+let DOCS = [];
 
 const INHERITED = ["author","counterparty","projectNumber"];
 
@@ -68,6 +46,10 @@ function withInheritance(doc) {
 function openCard(id) {
   const { doc, parent, resolved } = withInheritance(byId[id]);
 
+  // Скрываем сообщение "Выберите документ"
+  const welcomeDiv = $main.querySelector('div:first-child');
+  if (welcomeDiv) welcomeDiv.style.display = 'none';
+
   const childrenHtml = (doc.children || [])
     .map(cid => byId[cid] ? `<a href="#" data-child="${cid}" class="underline hover:no-underline">${byId[cid].title}</a>` : '')
     .filter(Boolean).join(", ") || "—";
@@ -79,7 +61,7 @@ function openCard(id) {
         ${field("Тип", resolved.type)}
         ${field("Статус", resolved.status, true)}
         ${field("Версия", resolved.version)}
-        ${field("Дата создания", resolved.date)}
+        ${field("Дата создания", resolved.date || resolved.createdAt)}
         ${field("Автор", resolved.author, false, doc.author==null, parent)}
         ${field("Контрагент", resolved.counterparty, false, doc.counterparty==null, parent)}
         ${field("Номер проекта", resolved.projectNumber, false, doc.projectNumber==null, parent)}
@@ -100,6 +82,13 @@ function openCard(id) {
     });
   });
 
+  // Рендеринг дополнительных полей для новых типов документов
+  renderApplicationExtras(doc);
+  renderCostCentersTable(doc);
+  renderApplicationTemplate(doc);
+  renderAgreementExtras(doc);
+  renderAgreementTemplates(doc);
+
   // обновляем футер печати
   const footerTitle = document.getElementById("print-doc-title");
   if (footerTitle) footerTitle.textContent = resolved.title || "Без названия";
@@ -111,13 +100,272 @@ function field(label, value, badge=false, inherited=false, parent=null) {
   return `<div><div class="text-gray-500 text-xs">${label}${lock}</div><div>${val}</div></div>`;
 }
 
+// Функция форматирования чисел
+function fmt(n) {
+  return new Intl.NumberFormat('ru-RU').format(n);
+}
+
+// Рендеринг дополнительных полей для Application
+function renderApplicationExtras(doc) {
+  const wrap = document.getElementById('app-extra');
+  if (!wrap) return;
+
+  if (doc.type !== 'Application') { 
+    wrap.innerHTML = ''; 
+    wrap.classList.add('hidden');
+    return; 
+  }
+
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = `
+    <div class="grid grid-cols-2 gap-6">
+      <div>
+        <div class="text-sm text-gray-500">Организация</div>
+        <div class="font-medium">${doc.organization ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Контрагент</div>
+        <div class="font-medium">${doc.counterparty ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Гриф конфиденциальности</div>
+        <div class="font-medium">${doc.confidentiality ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Статья бюджета</div>
+        <div class="font-medium">${doc.budgetArticle ?? '—'}</div>
+      </div>
+
+      <div class="col-span-2">
+        <div class="text-sm text-gray-500">Содержание</div>
+        <div class="font-medium">${doc.content ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Регистрационный номер</div>
+        <div class="font-medium">${doc.regNumber ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Автор / Дата создания</div>
+        <div class="font-medium">
+          ${doc.author ?? '—'}${doc.createdAt ? ' — ' + doc.createdAt : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Ответственный</div>
+        <div class="font-medium">${doc.responsible ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Подразделение ответственного</div>
+        <div class="font-medium">${doc.responsibleDept ?? '—'}</div>
+      </div>
+    </div>
+  `;
+}
+
+// Рендеринг таблицы кост-центров
+function renderCostCentersTable(doc) {
+  const host = document.getElementById('cost-centers');
+  if (!host) return;
+  
+  if (doc.type !== 'Application') { 
+    host.innerHTML = ''; 
+    host.classList.add('hidden');
+    return; 
+  }
+
+  host.classList.remove('hidden');
+  const rows = Array.isArray(doc.costCenters) ? doc.costCenters : [];
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  host.innerHTML = `
+    <div class="mt-6">
+      <div class="text-sm text-gray-500 mb-2">Кост-центр (табличный справочник)</div>
+      <table class="w-full border rounded overflow-hidden">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left p-2 border-b">Центр затрат</th>
+            <th class="text-right p-2 border-b">Сумма, ₽</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td class="p-2 border-b">${r.cc}</td>
+              <td class="p-2 border-b text-right">${fmt(r.amount || 0)}</td>
+            </tr>
+          `).join('')}
+          <tr>
+            <td class="p-2 font-semibold text-right">Итого:</td>
+            <td class="p-2 font-semibold text-right">${fmt(total)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// Рендеринг автосгенерированного шаблона для Application
+function renderApplicationTemplate(doc) {
+  const box = document.getElementById('auto-template');
+  if (!box) return;
+  
+  if (doc.type !== 'Application') { 
+    box.innerHTML = ''; 
+    box.classList.add('hidden');
+    return; 
+  }
+
+  box.classList.remove('hidden');
+  const rows = (doc.costCenters || [])
+    .map(r => `— ${r.cc}: ${fmt(r.amount || 0)} ₽`).join('<br>');
+
+  const total = (doc.costCenters || [])
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  const template = `
+    <div class="mt-6 p-4 border rounded bg-gray-50">
+      <div class="font-semibold mb-2">Автосгенерированный шаблон</div>
+      <div class="text-sm leading-relaxed">
+        Организация: <b>${doc.organization ?? '—'}</b><br>
+        Контрагент: <b>${doc.counterparty ?? '—'}</b><br>
+        Статья бюджета: <b>${doc.budgetArticle ?? '—'}</b><br>
+        Рег. номер: <b>${doc.regNumber ?? '—'}</b><br>
+        Автор/Дата: <b>${doc.author ?? '—'}</b>${doc.createdAt ? ' — <b>' + doc.createdAt + '</b>' : ''}<br>
+        Ответственный: <b>${doc.responsible ?? '—'}</b>, подразделение: <b>${doc.responsibleDept ?? '—'}</b><br>
+        <br>
+        Содержание: ${doc.content ?? '—'}<br>
+        <br>
+        Распределение по кост-центрам:<br>
+        ${rows || '—'}<br>
+        <b>Итого: ${fmt(total)} ₽</b>
+      </div>
+    </div>
+  `;
+
+  box.innerHTML = template;
+}
+
+// Рендеринг дополнительных полей для Agreement
+function renderAgreementExtras(doc) {
+  const wrap = document.getElementById('app-extra');
+  if (!wrap) return;
+  if (doc.type !== 'Agreement') return;
+
+  const block = `
+    <div class="grid grid-cols-2 gap-6 mt-6">
+      <div>
+        <div class="text-sm text-gray-500">Организация</div>
+        <div class="font-medium">${doc.organization ?? '—'}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Контрагент</div>
+        <div class="font-medium">${doc.counterparty ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Регистрационный номер</div>
+        <div class="font-medium">${doc.regNumber ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Автор / Дата создания</div>
+        <div class="font-medium">
+          ${doc.author ?? '—'}${doc.createdAt ? ' — ' + doc.createdAt : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Ответственный</div>
+        <div class="font-medium">${doc.responsible ?? '—'}</div>
+      </div>
+
+      <div>
+        <div class="text-sm text-gray-500">Подразделение ответственного</div>
+        <div class="font-medium">${doc.responsibleDept ?? '—'}</div>
+      </div>
+    </div>
+  `;
+
+  wrap.insertAdjacentHTML('beforeend', block);
+  wrap.classList.remove('hidden');
+}
+
+// Рендеринг шаблонов для Agreement
+function renderAgreementTemplates(doc) {
+  const box = document.getElementById('auto-template');
+  if (!box) return;
+  if (doc.type !== 'Agreement') return;
+
+  const kinds = Array.isArray(doc.agreementKinds) ? doc.agreementKinds : [];
+
+  const ndaTpl = `
+    <div class="mb-4">
+      <div class="font-semibold">Шаблон: NDA</div>
+      <div class="text-sm leading-relaxed">
+        Между <b>${doc.organization ?? '—'}</b> и <b>${doc.counterparty ?? '—'}</b> 
+        заключается соглашение о неразглашении конфиденциальной информации.
+        Стороны обязуются использовать получаемые сведения исключительно для целей сотрудничества
+        и не раскрывать их третьим лицам без письменного согласия другой стороны.
+        Рег. №: <b>${doc.regNumber ?? '—'}</b>. Ответственный: <b>${doc.responsible ?? '—'}</b>.
+      </div>
+    </div>`;
+
+  const acTpl = `
+    <div class="mb-2">
+      <div class="font-semibold">Шаблон: Антикоррупционное соглашение</div>
+      <div class="text-sm leading-relaxed">
+        <b>${doc.organization ?? '—'}</b> и <b>${doc.counterparty ?? '—'}</b> 
+        подтверждают приверженность требованиям антикоррупционного законодательства и политик комплаенса.
+        Стороны обязуются воздерживаться от любых форм неправомерного вознаграждения,
+        незамедлительно сообщать о конфликте интересов и сотрудничать в проверках.
+        Рег. №: <b>${doc.regNumber ?? '—'}</b>. Ответственный: <b>${doc.responsible ?? '—'}</b>.
+      </div>
+    </div>`;
+
+  let content = `<div class="mt-6 p-4 border rounded bg-gray-50">
+    <div class="font-semibold mb-2">Автосгенерированные шаблоны</div>`;
+
+  if (kinds.includes('NDA')) content += ndaTpl;
+  if (kinds.includes('AntiCorruption')) content += acTpl;
+
+  if (!kinds.length) content += ndaTpl;
+
+  content += `</div>`;
+  box.insertAdjacentHTML('beforeend', content);
+  box.classList.remove('hidden');
+}
+
 // фильтры
 if ($search) $search.addEventListener("input", () => renderList($search.value, $statusFilter?.value || ""));
 if ($statusFilter) $statusFilter.addEventListener("change", () => renderList($search?.value || "", $statusFilter.value));
 
+// Загрузка данных
+async function loadDocuments() {
+  try {
+    const response = await fetch('data/sample-docs.json');
+    DOCS = await response.json();
+    renderList();
+    console.log("Документы загружены:", DOCS.length);
+  } catch (error) {
+    console.error('Ошибка загрузки документов:', error);
+    // Fallback к встроенным данным
+    DOCS = [
+      { id:"D-001", title:"Договор №123", type:"Договор аренды", status:"Действует",
+        version:"1.0", date:"2025-09-01", author:"Иван Иванов",
+        counterparty:"ООО Ромашка", projectNumber:"PRJ-2025-001",
+        parentId:null, children:["D-001-1","D-001-A"] }
+    ];
+    renderList();
+  }
+}
+
 // старт
-renderList();
-console.log("Документы загружены:", DOCS.length);
+loadDocuments();
 
 // ====== ДЕМО-РЕЖИМ (минимальная реализация) ======
 let tourIndex = 0;

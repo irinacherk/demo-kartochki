@@ -76,5 +76,63 @@
     "project": "PRJ-2025-003",
     "parentId": null,
     "description": "Соглашение о неразглашении коммерческой тайны"
+  },
+  {
+    "id": "APP-0001",
+    "title": "Заявка на закупку оборудования",
+    "type": "Application",
+    "status": "В работе",
+    "createdAt": "2025-09-05",
+    "version": "1.0",
+    "organization": "ООО Ромашка",
+    "counterparty": "ЗАО Ландыш",
+    "confidentiality": "Для служебного пользования",
+    "budgetArticle": "ОС и оборудование",
+    "content": "Покупка 5 рабочих станций для отдела разработки.",
+    "regNumber": "APP-2025-015",
+    "author": "Ирина Черкасова",
+    "responsible": "Алексей Петров",
+    "responsibleDept": "Отдел закупок",
+    "projectNumber": "PRJ-2025-010",
+    "costCenters": [
+      {"cc": "ЦЗ-101 (IT)", "amount": 250000},
+      {"cc": "ЦЗ-205 (R&D)", "amount": 150000}
+    ],
+    "relations": {
+      "parent": "",
+      "children": []
+    }
+  },
+  {
+    "id": "AGR-0001",
+    "title": "Соглашение о конфиденциальности и антикоррупционное",
+    "type": "Agreement",
+    "agreementKinds": ["NDA", "AntiCorruption"],
+    "status": "Действует",
+    "createdAt": "2025-09-05",
+    "version": "1.0",
+    "organization": "ООО Ромашка",
+    "counterparty": "ЗАО Ландыш",
+    "regNumber": "AGR-2025-004",
+    "author": "Анна Смирнова",
+    "responsible": "Алексей Петров",
+    "responsibleDept": "Юридический отдел",
+    "relations": { "parent": "", "children": [] }
+  },
+  {
+    "id": "AGR-0002",
+    "title": "Соглашение о конфиденциальности",
+    "type": "Agreement",
+    "agreementKinds": ["NDA"],
+    "status": "Подписан",
+    "createdAt": "2025-08-20",
+    "version": "1.0",
+    "organization": "ООО Ромашка",
+    "counterparty": "ООО Василёк",
+    "regNumber": "AGR-2025-003",
+    "author": "Ирина Черкасова",
+    "responsible": "Мария Кузнецова",
+    "responsibleDept": "Комплаенс",
+    "relations": { "parent": "", "children": [] }
   }
 ]
